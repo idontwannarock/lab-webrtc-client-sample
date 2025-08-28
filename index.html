@@ -263,8 +263,6 @@
         let roomParticipants = new Set(); // 追蹤房間內的用戶
         let currentUserId = null;
         let currentUserName = null;
-        let textRoomHandle = null;
-        let textRoomDataChannelOpen = false;
         
         // 訊息去重系統
         const processedMessages = new Map(); // 追蹤已處理的訊息
@@ -296,7 +294,7 @@
         // 定期清理過期訊息
         setInterval(cleanupOldMessages, 60 * 1000); // 每分鐘清理一次
         
-        // TextRoom 配置
+        // 聊天配置
         // 你的配置中 room-1234 有 secret = "adminpwd"
         function getRoomSecret(roomId) {
             if (roomId == 1234) {
@@ -518,7 +516,7 @@
                 chatInput.disabled = false;
                 sendBtn.disabled = false;
                 
-                // 不再使用 TextRoom，直接啟用 VideoRoom 聊天功能
+                // 啟用 VideoRoom 聊天功能
                 log('聊天功能已啟用，使用 VideoRoom display 方案');
                 
                 // 同時設置基於 Janus WebSocket 的聊天備用方案
@@ -839,8 +837,7 @@
             isVideoMuted = false;
             isAudioMuted = false;
             
-            // 禁用聊天功能和離開 TextRoom
-            leaveTextRoom();
+            // 禁用聊天功能
             chatInput.disabled = true;
             sendBtn.disabled = true;
             chatMessages.innerHTML = '';
@@ -885,531 +882,10 @@
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
         
-        // 已完全移除 TextRoom 聊天系統，統一使用 VideoRoom display 方案
-        // 
-        // 移除的 TextRoom 函數：
-        // - setupTextRoom() 
-        // - joinTextRoom()
-        // - diagnoseTextRoomStatus()
-        // - handleTextRoomMessage()
-        // - handleTextRoomJsep()
-        // - leaveTextRoom()
-        //
-        // 聊天功能現在完全依賴 VideoRoom 的 display 屬性更新機制
+        // 聊天功能完全依賴 VideoRoom 的 display 屬性更新機制
         
-        // 所有 TextRoom 函數已替換為 no-op 實現，防止錯誤呼叫
-        function setupTextRoom() { return; }
-        function joinTextRoom() { return; }  
-        function diagnoseTextRoomStatus() { return; }
-        function joinTextRoomForMessaging() { return; }
-        function handleTextRoomMessage() { return; }
-        function handleTextRoomJsep() { return; }
-        function leaveTextRoom() { return; }
-        function setupDataChannelConnection() { return; }
         
         // === 以下為 sendChatMessage 相關函數 ===
-        
-        function sendChatMessage() {
-                    
-                    // TextRoom 0.0.2 版本：直接進行 setup
-                    joinTextRoom(roomId, username);
-                },
-                error: function(error) {
-                    log('TextRoom 插件連接失敗: ' + error);
-                    log('可能原因:');
-                    log('1. Janus 服務器未啟用 TextRoom 插件');
-                    log('2. TextRoom 插件版本不兼容');
-                    log('3. Janus Gateway 配置問題');
-                    log('自動切換到備用聊天方案');
-                    // 使用備用聊天方案
-                    setupFallbackChat();
-                },
-                onmessage: function(msg, jsep) {
-                    handleTextRoomMessage(msg);
-                    handleTextRoomJsep(jsep);
-                },
-                ondataopen: function(data) {
-                    log('TextRoom 數據通道已開啟 - 可以發送數據了');
-                    log(`數據通道詳情: ${JSON.stringify(data)}`);
-                    textRoomDataChannelOpen = true;
-                },
-                ondata: function(data) {
-                    log('收到 TextRoom 數據通道訊息: ' + data, LOG_LEVELS.DEBUG);
-                    try {
-                        const chatData = JSON.parse(data);
-                        log(`解析聊天數據: ${JSON.stringify(chatData)}`);
-                        
-                        // 檢查多種可能的訊息格式
-                        const senderName = chatData.username || chatData.from || chatData.user;
-                        const messageText = chatData.message || chatData.text || chatData.msg;
-                        
-                        if (senderName && senderName !== currentUserName && messageText) {
-                            addChatMessage(senderName, senderName, messageText, false);
-                            log(`通過 TextRoom DataChannel 收到來自 ${senderName} 的訊息: ${messageText}`);
-                        } else {
-                            log(`訊息過濾或格式不匹配: 發送者=${senderName}, 內容=${messageText}`);
-                        }
-                    } catch (error) {
-                        log('解析 TextRoom 數據通道訊息失敗: ' + error);
-                        log('原始數據: ' + data);
-                    }
-                },
-                // 添加額外的事件處理器，以防 TextRoom 0.0.2 使用不同的事件機制
-                ondatachannel: function(datachannel) {
-                    log('收到 DataChannel 對象: ' + datachannel);
-                    if (datachannel && datachannel.onmessage) {
-                        datachannel.onmessage = function(event) {
-                            log('通過原生 DataChannel 收到訊息: ' + event.data);
-                            try {
-                                const chatData = JSON.parse(event.data);
-                                const senderName = chatData.username || chatData.from || chatData.user;
-                                const messageText = chatData.message || chatData.text || chatData.msg;
-                                
-                                if (senderName && senderName !== currentUserName && messageText) {
-                                    addChatMessage(senderName, senderName, messageText, false);
-                                    log(`通過原生 DataChannel 收到來自 ${senderName} 的訊息: ${messageText}`);
-                                }
-                            } catch (error) {
-                                log('解析原生 DataChannel 訊息失敗: ' + error);
-                            }
-                        };
-                    }
-                }
-            });
-        }
-        
-        // 加入 TextRoom 聊天房間
-        function joinTextRoom(roomId, username) {
-            if (!textRoomHandle) return;
-            
-            log('測試 TextRoom 0.0.2 支援的 API 請求...', LOG_LEVELS.DEBUG);
-            
-            // 測試 TextRoom 0.0.2 的基本請求
-            const testRequests = [
-                { request: "list" },  // 列出房間
-                { request: "exists", room: parseInt(roomId) },  // 檢查房間是否存在  
-                { request: "listparticipants", room: parseInt(roomId) },  // 列出參與者
-                { request: "edit", room: parseInt(roomId), new_description: "測試房間" },  // 測試編輯
-                {}  // 空請求
-            ];
-            
-            let testIndex = 0;
-            
-            function testNextRequest() {
-                if (testIndex >= testRequests.length) {
-                    log('API 測試完成，TextRoom 不支援多用戶聊天，將使用 VideoRoom 替代方案');
-                    setupFallbackChat();
-                    return;
-                }
-                
-                const testMsg = { ...testRequests[testIndex] };
-                
-                // 為 room 1234 添加密鑰
-                const roomSecret = getRoomSecret(roomId);
-                if (roomSecret !== null && testMsg.room) {
-                    testMsg.secret = roomSecret;
-                }
-                
-                log(`測試請求 ${testIndex + 1}: ${JSON.stringify(testMsg)}`, LOG_LEVELS.DEBUG);
-                
-                textRoomHandle.send({
-                    message: testMsg,
-                    success: function(result) {
-                        log(`測試 ${testIndex + 1} 結果: ${JSON.stringify(result)}`, LOG_LEVELS.DEBUG);
-                        
-                        if (result && !result.error_code) {
-                            log(`找到可用的 API 請求！但 TextRoom 0.0.2 不支援多用戶聊天，使用 VideoRoom 替代方案`);
-                            setupFallbackChat();
-                            return;
-                        }
-                        
-                        testIndex++;
-                        testNextRequest();
-                    },
-                    error: function(error) {
-                        log(`測試 ${testIndex + 1} 錯誤: ${error}`);
-                        testIndex++;
-                        testNextRequest();
-                    }
-                });
-            }
-            
-            testNextRequest();
-        }
-        
-        // 診斷 TextRoom 狀態
-        function diagnoseTextRoomStatus(roomId) {
-            if (!textRoomHandle) return;
-            
-            log('=== TextRoom 狀態診斷 ===');
-            
-            // 再次查詢房間資訊
-            textRoomHandle.send({
-                message: { request: "list" },
-                success: function(result) {
-                    log(`房間列表: ${JSON.stringify(result)}`);
-                    
-                    if (result && result.list) {
-                        const room = result.list.find(r => r.room == roomId);
-                        if (room) {
-                            log(`房間 ${roomId} 狀態:`);
-                            log(`- 參與者數量: ${room.num_participants}`);
-                            log(`- 歷史訊息: ${room.history}`);
-                            log(`- 需要密碼: ${room.pin_required}`);
-                        }
-                    }
-                }
-            });
-            
-            // 查詢房間參與者
-            const roomSecret = getRoomSecret(roomId);
-            const participantsMsg = { 
-                request: "listparticipants", 
-                room: parseInt(roomId) 
-            };
-            if (roomSecret !== null) {
-                participantsMsg.secret = roomSecret;
-            }
-            
-            textRoomHandle.send({
-                message: participantsMsg,
-                success: function(result) {
-                    log(`房間 ${roomId} 參與者: ${JSON.stringify(result)}`);
-                },
-                error: function(error) {
-                    log(`查詢參與者失敗: ${error}`);
-                }
-            });
-        }
-        
-        // DataChannel 建立成功後加入房間以接收訊息
-        function joinTextRoomForMessaging(roomId, username) {
-            if (!textRoomHandle) return;
-            
-            log(`嘗試加入 TextRoom ${roomId} 以接收訊息...`);
-            
-            const joinMsg = {
-                request: "join",
-                room: parseInt(roomId),
-                username: username || currentUserName || `user_${Date.now()}`,
-                display: username || currentUserName || `User ${Date.now()}`
-            };
-            
-            // 為 room 1234 添加密鑰
-            const roomSecret = getRoomSecret(roomId);
-            if (roomSecret !== null) {
-                joinMsg.secret = roomSecret;
-            }
-            
-            log(`發送 join 請求: ${JSON.stringify(joinMsg)}`, LOG_LEVELS.DEBUG);
-            
-            textRoomHandle.send({
-                message: joinMsg,
-                success: function(result) {
-                    log(`Join 結果: ${JSON.stringify(result)}`, LOG_LEVELS.DEBUG);
-                    
-                    if (result && result.error_code) {
-                        log(`Join 失敗: ${result.error} (code: ${result.error_code})`, LOG_LEVELS.DEBUG);
-                        if (result.error_code === 415) {
-                            log('TextRoom 0.0.2 可能不需要明確的 join 請求，DataChannel 應該已經可以收發訊息');
-                        }
-                    } else {
-                        log('成功加入 TextRoom，現在可以收發訊息');
-                    }
-                },
-                error: function(error) {
-                    log(`Join 請求失敗: ${error}`);
-                    log('即使 join 失敗，DataChannel 可能仍可正常工作');
-                }
-            });
-        }
-        
-        // 設置 DataChannel 連接
-        function setupDataChannelConnection(roomId, username) {
-            log(`直接建立 TextRoom DataChannel 連接...`);
-            
-            // TextRoom 0.0.2 可能不需要特定的 API 請求，直接建立 DataChannel
-            textRoomHandle.createOffer({
-                media: { audio: false, video: false, data: true },
-                success: function(jsep) {
-                    log('TextRoom DataChannel Offer 創建成功');
-                    log('JSEP Offer: ' + JSON.stringify(jsep));
-                    
-                    // 嘗試不同的 DataChannel 建立方式
-                    const connectionAttempts = [
-                        // 方式1: 使用 setup 請求建立 DataChannel
-                        { 
-                            message: { 
-                                request: "setup",
-                                room: parseInt(roomId)
-                            }, 
-                            jsep: jsep 
-                        },
-                        // 方式2: 使用 join 請求
-                        { 
-                            message: { 
-                                request: "join",
-                                room: parseInt(roomId),
-                                username: username || `user_${Date.now()}`,
-                                display: username || `User ${Date.now()}`
-                            }, 
-                            jsep: jsep 
-                        },
-                        // 方式3: 使用 create 請求
-                        {
-                            message: {
-                                request: "create", 
-                                room: parseInt(roomId),
-                                description: `聊天房間 ${roomId}`
-                            },
-                            jsep: jsep
-                        }
-                    ];
-                    
-                    let attemptIndex = 0;
-                    
-                    function tryNextConnection() {
-                        if (attemptIndex >= connectionAttempts.length) {
-                            log('所有 DataChannel 連接嘗試都失敗，使用備用方案');
-                            setupFallbackChat();
-                            return;
-                        }
-                        
-                        const attempt = { ...connectionAttempts[attemptIndex] };
-                        
-                        // 為 room 1234 添加密鑰
-                        const roomSecret = getRoomSecret(roomId);
-                        if (roomSecret !== null && attempt.message) {
-                            attempt.message.secret = roomSecret;
-                        }
-                        
-                        log(`DataChannel 連接嘗試 ${attemptIndex + 1}: ${JSON.stringify(attempt.message)}`);
-                        
-                        textRoomHandle.send({
-                            ...attempt,
-                            success: function(result) {
-                                log(`DataChannel 嘗試 ${attemptIndex + 1} 結果: ${JSON.stringify(result)}`);
-                                
-                                if (result && result.error_code) {
-                                    log(`嘗試 ${attemptIndex + 1} 失敗: ${result.error}`);
-                                    attemptIndex++;
-                                    tryNextConnection();
-                                } else {
-                                    log(`DataChannel 嘗試 ${attemptIndex + 1} 成功！`);
-                                    textRoomDataChannelOpen = true;
-                                    log('TextRoom DataChannel 已開啟，聊天功能可用');
-                                    
-                                    // 診斷 TextRoom 狀態
-                                    diagnoseTextRoomStatus(roomId);
-                                    
-                                    // DataChannel 建立成功後，嘗試加入房間以接收其他用戶的訊息
-                                    joinTextRoomForMessaging(roomId, username);
-                                }
-                            },
-                            error: function(error) {
-                                log(`DataChannel 嘗試 ${attemptIndex + 1} 錯誤: ${error}`);
-                                attemptIndex++;
-                                tryNextConnection();
-                            }
-                        });
-                    }
-                    
-                    tryNextConnection();
-                },
-                error: function(error) {
-                    log('TextRoom DataChannel Offer 創建失敗: ' + error);
-                    setupFallbackChat();
-                }
-            });
-        }
-        
-        // 處理 TextRoom 訊息
-        function handleTextRoomMessage(msg) {
-            log('TextRoom 收到訊息: ' + JSON.stringify(msg));
-            
-            const event = msg.textroom;
-            log(`TextRoom 事件類型: ${event}`);
-            
-            if (event === 'joined') {
-                log(`成功加入 TextRoom，用戶名: ${msg.username}`);
-                if (msg.participants) {
-                    log(`房間內現有用戶: ${msg.participants.map(p => p.username).join(', ')}`);
-                }
-            } else if (event === 'join') {
-                if (msg.username !== currentUserName) {
-                    addSystemMessage(`${msg.username} 加入了聊天室`);
-                    log(`${msg.username} 加入了聊天室`);
-                }
-            } else if (event === 'leave') {
-                if (msg.username !== currentUserName) {
-                    addSystemMessage(`${msg.username} 離開了聊天室`);
-                    log(`${msg.username} 離開了聊天室`);
-                }
-            } else if (event === 'message' || event === 'announcement' || event === 'sent' || event === 'received') {
-                log(`收到聊天訊息事件！`);
-                log(`事件: ${event}`);
-                log(`完整訊息: ${JSON.stringify(msg)}`);
-                
-                // TextRoom 的訊息格式可能不同，檢查多種可能的字段
-                const senderName = msg.from || msg.username || msg.sender || msg.display;
-                const messageText = msg.text || msg.message || msg.content;
-                
-                log(`解析結果 - 發送者: ${senderName}, 內容: ${messageText}`);
-                
-                if (senderName && senderName !== currentUserName && messageText) {
-                    addChatMessage(senderName, senderName, messageText, false);
-                    log(`成功顯示來自 ${senderName} 的訊息: ${messageText}`);
-                } else {
-                    log(`訊息過濾或解析失敗:`);
-                    log(`- 發送者: ${senderName} (當前用戶: ${currentUserName})`);
-                    log(`- 內容: ${messageText}`);
-                    log(`- 是否為自己的訊息: ${senderName === currentUserName}`);
-                }
-            } else if (event === 'error') {
-                log(`TextRoom 錯誤: ${msg.error}`);
-                if (msg.error_code) {
-                    log(`錯誤代碼: ${msg.error_code}`);
-                }
-            } else if (event === 'success') {
-                log(`TextRoom 操作成功`);
-            } else if (event === 'setup') {
-                log('TextRoom setup 完成，準備建立 DataChannel');
-            } else {
-                log(`未處理的 TextRoom 事件: ${event}`);
-                log(`完整訊息內容: ${JSON.stringify(msg)}`);
-            }
-        }
-        
-        // 處理 TextRoom JSEP (用於 DataChannel 建立)
-        function handleTextRoomJsep(jsep) {
-            if (jsep) {
-                log('收到 TextRoom JSEP，處理 answer');
-                textRoomHandle.handleRemoteJsep({
-                    jsep: jsep,
-                    success: function() {
-                        log('TextRoom DataChannel 連接建立成功');
-                    },
-                    error: function(error) {
-                        log('TextRoom DataChannel 建立失敗: ' + error);
-                    }
-                });
-            }
-        }
-        
-        // 離開 TextRoom
-        function leaveTextRoom() {
-            if (textRoomHandle) {
-                const leaveMsg = {
-                    request: 'leave'
-                };
-                
-                // 添加房間密鑰（如果需要）
-                const roomSecret = getRoomSecret(currentRoomId);
-                if (roomSecret !== null) {
-                    leaveMsg.secret = roomSecret;
-                }
-                
-                textRoomHandle.send({ message: leaveMsg });
-                textRoomHandle.detach();
-                textRoomHandle = null;
-                log('已離開 TextRoom 聊天');
-            }
-        }
-        
-        // 嘗試基本的文字發送方法
-        function tryBasicTextSend(message) {
-            if (!textRoomHandle) {
-                log('TextRoom handle 不存在，使用備用方案');
-                broadcastChatMessage(message, currentUserName, currentUserId);
-                return;
-            }
-            
-            // 嘗試不同的請求格式
-            const basicRequests = [
-                { request: 'text', text: message },
-                { request: 'post', text: message },
-                { text: message }, // 無請求類型
-            ];
-            
-            let requestIndex = 0;
-            
-            function tryNextRequest() {
-                if (requestIndex >= basicRequests.length) {
-                    log('TextRoom 請求都失敗，使用 VideoRoom 聊天方案');
-                    sendChatViaVideoRoom(message);
-                    return;
-                }
-                
-                const testMsg = { ...basicRequests[requestIndex] };
-                testMsg.room = parseInt(currentRoomId);
-                
-                // 添加密鑰
-                const roomSecret = getRoomSecret(currentRoomId);
-                if (roomSecret !== null) {
-                    testMsg.secret = roomSecret;
-                }
-                
-                log(`嘗試基本請求 ${requestIndex + 1}: ${JSON.stringify(testMsg)}`);
-                
-                textRoomHandle.send({
-                    message: testMsg,
-                    success: function(result) {
-                        if (result && result.error_code) {
-                            log(`基本請求 ${requestIndex + 1} 失敗: ${result.error}`);
-                            requestIndex++;
-                            tryNextRequest();
-                        } else {
-                            log(`基本請求 ${requestIndex + 1} 成功！`);
-                        }
-                    },
-                    error: function(error) {
-                        log(`基本請求 ${requestIndex + 1} 錯誤: ${error}`);
-                        requestIndex++;
-                        tryNextRequest();
-                    }
-                });
-            }
-            
-            tryNextRequest();
-        }
-        
-        // TextRoom 相關函數已移除，現在統一使用 VideoRoom 聊天方案
-        
-        // 設置基於 Janus WebSocket 的聊天系統
-        
-        // 備用聊天方案（如果 TextRoom 不可用）
-        function setupFallbackChat() {
-            log('TextRoom 不可用，啟用備用聊天方案');
-            
-            // 啟用 localStorage 和 BroadcastChannel 聊天
-            if (window.BroadcastChannel && !window.chatChannel) {
-                window.chatChannel = new BroadcastChannel('webrtc-chat');
-                window.chatChannel.addEventListener('message', function(event) {
-                    const data = event.data;
-                    if (data.type === 'chat' && 
-                        data.room === currentRoomId && 
-                        data.userId !== currentUserId) {
-                        addChatMessage(data.userId, data.username, data.text, false);
-                        log(`收到來自 ${data.username} 的備用聊天訊息: ${data.text}`);
-                    } else if (data.type === 'user_joined' && data.userId !== currentUserId) {
-                        addSystemMessage(`${data.username} 加入了聊天室（本地模式）`);
-                    } else if (data.type === 'user_left' && data.userId !== currentUserId) {
-                        addSystemMessage(`${data.username} 離開了聊天室（本地模式）`);
-                    }
-                });
-                
-                // 廣播用戶加入事件
-                window.chatChannel.postMessage({
-                    type: 'user_joined',
-                    room: currentRoomId,
-                    username: currentUserName,
-                    userId: currentUserId,
-                    timestamp: Date.now()
-                });
-            }
-            
-            log('備用聊天方案已啟用（支援同機器多標籤頁聊天）');
-        }
         
         function sendChatMessage() {
             const message = chatInput.value.trim();
@@ -1418,7 +894,7 @@
             // 顯示自己的訊息
             addChatMessage(currentUserId, currentUserName, message, true);
             
-            // TextRoom 0.0.2 不支援多用戶聊天，使用 VideoRoom 替代方案
+            // 使用 VideoRoom 替代方案
             if (videoRoomHandle) {
                 log(`使用 VideoRoom 發送聊天訊息: ${message}`);
                 sendChatViaVideoRoom(message);
@@ -1429,7 +905,6 @@
             
             chatInput.value = '';
         }
-        
         // 使用 VideoRoom 發送聊天訊息
         function sendChatViaVideoRoom(message) {
             if (!videoRoomHandle || !currentRoomId || !currentUserName) {
@@ -1524,7 +999,7 @@
             }
         }
         
-        // 已移除 TextRoom DataChannel 發送功能，統一使用 VideoRoom display 方案
+        // 統一使用 VideoRoom display 方案
         
         // 處理聊天訊息
         function processChatMessage(displayName, publisherId) {
@@ -1587,7 +1062,7 @@
             return displayName;
         }
         
-        // 備用聊天訊息廣播（用於 TextRoom 不可用時）
+        // 備用聊天訊息廣播
         function broadcastChatMessage(message, senderName, senderId) {
             const chatData = {
                 type: 'chat',

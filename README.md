@@ -105,7 +105,8 @@ lab-webrtc-client-sample/
 ├── index.html          # 主應用程序
 ├── janus.js           # Janus Gateway 客戶端庫
 ├── requirement.md     # 需求分析與實現狀態
-└── README.md          # 專案說明文件
+├── README.md          # 專案說明文件
+└── CONTRIBUTING.md    # 貢獻指南
 ```
 
 ## 配置說明
@@ -135,36 +136,6 @@ navigator.mediaDevices.getUserMedia({
 }
 ```
 
-## 開發指南
-
-### 主要函數
-- `initJanus()` - 初始化 Janus Gateway 連接
-- `joinRoom()` - 加入視訊聊天室
-- `sendChatMessage()` - 發送文字訊息
-- `toggleMute()` - 切換音訊狀態
-- `toggleVideo()` - 切換視訊狀態
-
-### 事件處理
-- `onmessage` - 處理 VideoRoom 訊息
-- `onlocalstream` - 處理本地媒體流
-- `onremotestream` - 處理遠程媒體流
-
-### 聊天系統
-```javascript
-// 發送聊天訊息
-function sendChatViaVideoRoom(message) {
-    const chatPayload = {
-        type: 'chat',
-        message: message,
-        sender: currentUserName,
-        timestamp: Date.now(),
-        messageId: generateUUIDv7()
-    };
-    
-    const newDisplay = `${currentUserName}|CHAT:${JSON.stringify(chatPayload)}`;
-    // 透過 VideoRoom configure 發送
-}
-```
 
 ## 故障排除
 
@@ -205,6 +176,10 @@ function sendChatViaVideoRoom(message) {
 - 視訊延遲目標: < 200ms
 - 聊天訊息保留時間: 5 分鐘
 
+## 貢獻
+
+歡迎貢獻代碼、報告問題或提出建議！請查看 [CONTRIBUTING.md](CONTRIBUTING.md) 了解詳細的貢獻指南。
+
 ## 授權聲明
 
 本專案為學習和示範用途，請遵守相關開源軟體授權條款。
@@ -212,9 +187,9 @@ function sendChatViaVideoRoom(message) {
 ## 支援與反饋
 
 如有問題或建議，請通過以下方式聯繫：
-- 提交 GitHub Issue
-- 查看專案文件
-- 參考 Janus Gateway 官方文件
+- 提交 [GitHub Issue](https://github.com/your-repo/issues)
+- 查看 [CONTRIBUTING.md](CONTRIBUTING.md) 開發指南
+- 參考 [Janus Gateway 官方文件](https://janus.conf.meetecho.com/)
 
 ---
 

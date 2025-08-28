@@ -1,0 +1,127 @@
+version: '3.8'
+
+services:
+  # Janus Gateway 媒體伺服器
+  janus:
+    image: canyan/janus-gateway:latest
+    container_name: janus-gateway
+    restart: unless-stopped
+    ports:
+      # WebSocket API (主要用於客戶端連接)
+      - "${JANUS_WS_PORT:-8188}:8188"
+      # HTTP API (用於 REST API 和 JavaScript 庫)
+      - "${JANUS_HTTP_PORT:-8081}:8081" 
+      # Admin WebSocket (用於管理和監控)
+      - "${JANUS_ADMIN_WS_PORT:-7088}:7088"
+      # Admin HTTP (用於管理界面)
+      - "${JANUS_ADMIN_HTTP_PORT:-7188}:7188"
+      # RTP 媒體端口範圍 (用於 WebRTC 媒體傳輸)
+      - "20000-40000:20000-40000/udp"
+    volumes:
+      # 掛載自定義配置檔案 (可選)
+      - ./janus-config:/opt/janus/etc/janus:ro
+      # 掛載日誌目錄
+      - ./logs/janus:/opt/janus/var/log/janus
+    environment:
+      # 啟用 WebSocket 傳輸
+      - JANUS_WS_ENABLED=true
+      - JANUS_WS_PORT=8188
+      # 啟用 HTTP 傳輸  
+      - JANUS_HTTP_ENABLED=true
+      - JANUS_HTTP_PORT=8081
+      # 啟用 Admin API
+      - JANUS_ADMIN_WS_ENABLED=true
+      - JANUS_ADMIN_WS_PORT=7088
+      - JANUS_ADMIN_HTTP_ENABLED=true
+      - JANUS_ADMIN_HTTP_PORT=7188
+      # VideoRoom 插件設定
+      - JANUS_VIDEOROOM_ENABLED=true
+      # 日誌等級
+      - JANUS_LOG_LEVEL=4
+      # ICE 配置 (NAT 穿透)
+      - JANUS_ICE_ENFORCE_LIST=eth0
+      - JANUS_ICE_IGNORE_LIST=vmnet
+      # STUN/TURN 伺服器 (可選，用於改善連接性)
+      # - JANUS_STUN_SERVER=stun:stun.l.google.com:19302
+      # - JANUS_TURN_SERVER=turn:your-turn-server:3478
+      # - JANUS_TURN_USER=username
+      # - JANUS_TURN_PASSWORD=password
+    networks:
+      - webrtc-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/janus/info"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # 客戶端網頁伺服器 (靜態文件)
+  web:
+    image: nginx:alpine
+    container_name: webrtc-client
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    volumes:
+      # 掛載客戶端檔案
+      - ./:/usr/share/nginx/html:ro
+      # 自定義 nginx 配置
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      janus:
+        condition: service_healthy
+    networks:
+      - webrtc-net
+
+  # Janus Gateway 管理和監控界面 (可選)
+  janus-admin:
+    image: nginx:alpine
+    container_name: janus-admin-ui
+    restart: unless-stopped
+    ports:
+      - "${ADMIN_UI_PORT:-7080}:80"
+    volumes:
+      # 簡單的管理界面 HTML
+      - ./admin:/usr/share/nginx/html:ro
+    depends_on:
+      - janus
+    networks:
+      - webrtc-net
+    profiles:
+      - admin  # 使用 profile 讓管理界面變為可選
+
+networks:
+  webrtc-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  janus-logs:
+    driver: local
+  janus-config:
+    driver: local
+
+# 使用說明:
+# 1. 啟動所有基本服務:
+#    docker-compose up -d
+#
+# 2. 只啟動 Janus Gateway:
+#    docker-compose up -d janus
+#
+# 3. 啟動包含管理界面的完整服務:
+#    docker-compose --profile admin up -d
+#
+# 4. 查看日誌:
+#    docker-compose logs -f janus
+#
+# 5. 停止所有服務:
+#    docker-compose down
+#
+# 服務端點:
+# - 客戶端應用: http://localhost:8080
+# - Janus WebSocket: ws://localhost:8188
+# - Janus HTTP API: http://localhost:8081
+# - Janus Admin: ws://localhost:7088
+# - 管理界面: http://localhost:7080 (需要 --profile admin)

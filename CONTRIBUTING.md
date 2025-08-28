@@ -5,12 +5,13 @@
 ## 開發環境設置
 
 ### 前置要求
-- Node.js 16+ 或 Python 3.7+ (用於本地伺服器)
-- Git
-- 現代瀏覽器 (Chrome 60+, Firefox 55+, Safari 12+)
-- Janus Gateway 伺服器 (用於完整測試)
+- **Docker & Docker Compose** (推薦開發方式)
+- **Node.js 16+** 或 **Python 3.7+** (用於本地伺服器)
+- **Git**
+- **現代瀏覽器** (Chrome 60+, Firefox 55+, Safari 12+)
+- **Janus Gateway 伺服器** (手動安裝時需要)
 
-### 本地開發設置
+### 方法一：使用 Docker (推薦)
 
 1. **Fork 並克隆專案**
    ```bash
@@ -18,18 +19,99 @@
    cd lab-webrtc-client-sample
    ```
 
-2. **設置開發伺服器**
+2. **啟動完整開發環境**
    ```bash
-   # 使用 Python
-   python -m http.server 8080
+   # 啟動所有服務 (Janus Gateway + Web Server)
+   docker-compose up -d
    
-   # 或使用 Node.js
-   npx serve .
+   # 檢查服務狀態
+   docker-compose ps
+   
+   # 查看服務日誌
+   docker-compose logs -f
    ```
 
-3. **配置測試環境**
-   - 修改 `index.html` 中的 Janus Gateway 地址
-   - 確保瀏覽器允許攝影機和麥克風權限
+3. **開發和測試**
+   - 瀏覽器開啟 `http://localhost:8080`
+   - 修改 `index.html` 後刷新即可看到變更
+   - Janus Gateway 管理界面: `http://localhost:7088`
+
+### 方法二：手動設置
+
+1. **安裝 Janus Gateway**
+   ```bash
+   # Ubuntu/Debian
+   sudo apt-get update
+   sudo apt-get install libmicrohttpd-dev libjansson-dev \
+       libssl-dev libsofia-sip-ua-dev libglib2.0-dev \
+       libopus-dev libogg-dev libcurl4-openssl-dev liblua5.3-dev \
+       libconfig-dev pkg-config libtool automake
+   
+   # 從源碼編譯 Janus
+   git clone https://github.com/meetecho/janus-gateway.git
+   cd janus-gateway
+   sh autogen.sh
+   ./configure --prefix=/opt/janus
+   make
+   sudo make install
+   ```
+
+2. **配置 Janus Gateway**
+   ```bash
+   # 複製配置檔範例
+   sudo cp -r /opt/janus/etc/janus/*.sample /opt/janus/etc/janus/
+   
+   # 移除 .sample 後綴
+   cd /opt/janus/etc/janus/
+   sudo rename 's/\.sample$//' *.sample
+   ```
+
+3. **啟動服務**
+   ```bash
+   # 啟動 Janus Gateway
+   /opt/janus/bin/janus
+   
+   # 啟動客戶端 HTTP 伺服器
+   python -m http.server 8080
+   ```
+
+### Docker 開發工具
+
+#### 常用 Docker 命令
+```bash
+# 啟動服務
+docker-compose up -d
+
+# 停止服務
+docker-compose down
+
+# 重新建置服務
+docker-compose build --no-cache
+
+# 查看即時日誌
+docker-compose logs -f janus
+
+# 進入 Janus 容器
+docker-compose exec janus bash
+```
+
+#### 端口設定
+- **8080**: 客戶端網頁應用
+- **8188**: Janus WebSocket API
+- **8081**: Janus HTTP API 和 JavaScript 庫
+- **7088**: Janus Admin/Monitor WebSocket
+- **7188**: Janus Admin/Monitor HTTP
+
+#### 環境變數自定義
+在 `.env` 檔案中配置：
+```bash
+# .env
+JANUS_WS_PORT=8188
+JANUS_HTTP_PORT=8081
+JANUS_ADMIN_WS_PORT=7088
+JANUS_ADMIN_HTTP_PORT=7188
+WEB_PORT=8080
+```
 
 ## 專案架構
 
@@ -38,6 +120,8 @@
 lab-webrtc-client-sample/
 ├── index.html          # 主應用程序 (HTML + CSS + JavaScript)
 ├── janus.js           # Janus Gateway 客戶端庫
+├── docker-compose.yml  # Docker 服務配置
+├── .env.example        # 環境變數範例
 ├── requirement.md     # 需求分析與實現狀態
 ├── README.md          # 專案說明文件
 └── CONTRIBUTING.md    # 貢獻指南 (本文件)

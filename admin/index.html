@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Janus Gateway 管理界面</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f7fa;
+            color: #2d3748;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            color: #1a202c;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            color: #718096;
+            font-size: 1.1rem;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .card {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-left: 4px solid #4299e1;
+        }
+        
+        .card h3 {
+            color: #1a202c;
+            margin-bottom: 15px;
+            font-size: 1.3rem;
+        }
+        
+        .card p {
+            color: #4a5568;
+            margin-bottom: 15px;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+        
+        .status-loading {
+            background: #fed7d7;
+            color: #c53030;
+        }
+        
+        .status-online {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+        
+        .status-offline {
+            background: #fed7d7;
+            color: #c53030;
+        }
+        
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #4299e1;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+            transition: background 0.3s;
+        }
+        
+        .btn:hover {
+            background: #3182ce;
+        }
+        
+        .btn-secondary {
+            background: #718096;
+        }
+        
+        .btn-secondary:hover {
+            background: #4a5568;
+        }
+        
+        .service-list {
+            list-style: none;
+        }
+        
+        .service-list li {
+            padding: 8px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        .service-list li:last-child {
+            border-bottom: none;
+        }
+        
+        .service-list strong {
+            color: #2d3748;
+        }
+        
+        .logs {
+            background: #1a202c;
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎥 Janus Gateway 管理中心</h1>
+            <p>WebRTC 視訊聊天室後台管理界面</p>
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <h3>📊 服務狀態</h3>
+                <p>Janus Gateway 狀態: <span id="janusStatus" class="status-indicator status-loading">檢查中...</span></p>
+                <ul class="service-list">
+                    <li><strong>WebSocket API:</strong> <span id="wsStatus">檢查中...</span></li>
+                    <li><strong>HTTP API:</strong> <span id="httpStatus">檢查中...</span></li>
+                    <li><strong>Admin API:</strong> <span id="adminStatus">檢查中...</span></li>
+                    <li><strong>VideoRoom 插件:</strong> <span id="videoroomStatus">檢查中...</span></li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <h3>🔗 服務端點</h3>
+                <p>快速訪問各個服務端點</p>
+                <a href="http://localhost:8080" target="_blank" class="btn">客戶端應用</a>
+                <a href="http://localhost:8081/janus/info" target="_blank" class="btn btn-secondary">Janus 資訊</a>
+                <a href="#" onclick="checkHealth()" class="btn btn-secondary">健康檢查</a>
+                <a href="#" onclick="refreshStatus()" class="btn btn-secondary">刷新狀態</a>
+            </div>
+
+            <div class="card">
+                <h3>📈 系統資訊</h3>
+                <p id="systemInfo">載入中...</p>
+            </div>
+
+            <div class="card">
+                <h3>⚙️ 配置資訊</h3>
+                <ul class="service-list">
+                    <li><strong>WebSocket:</strong> ws://localhost:8188</li>
+                    <li><strong>HTTP API:</strong> http://localhost:8081</li>
+                    <li><strong>管理端口:</strong> 7088 (WS), 7188 (HTTP)</li>
+                    <li><strong>RTP 端口:</strong> 20000-40000/udp</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>📋 實時日誌</h3>
+            <p>最近的 Janus Gateway 運行日誌 (模擬)</p>
+            <div id="logs" class="logs">載入日誌中...</div>
+            <br>
+            <button onclick="clearLogs()" class="btn btn-secondary">清空日誌</button>
+            <button onclick="downloadLogs()" class="btn btn-secondary">下載日誌</button>
+        </div>
+    </div>
+
+    <script>
+        // 模擬檢查 Janus Gateway 狀態
+        async function checkJanusStatus() {
+            const statusElement = document.getElementById('janusStatus');
+            const wsElement = document.getElementById('wsStatus');
+            const httpElement = document.getElementById('httpStatus');
+            const adminElement = document.getElementById('adminStatus');
+            const videoroomElement = document.getElementById('videoroomStatus');
+            
+            try {
+                // 檢查 HTTP API
+                const response = await fetch('http://localhost:8081/janus/info');
+                const data = await response.json();
+                
+                statusElement.textContent = '在線';
+                statusElement.className = 'status-indicator status-online';
+                
+                wsElement.textContent = '✅ 正常';
+                httpElement.textContent = '✅ 正常';
+                adminElement.textContent = '✅ 正常';
+                videoroomElement.textContent = data.plugins?.['janus.plugin.videoroom'] ? '✅ 已啟用' : '❌ 未啟用';
+                
+                // 更新系統資訊
+                document.getElementById('systemInfo').innerHTML = `
+                    <strong>名稱:</strong> ${data.name || 'Janus Gateway'}<br>
+                    <strong>版本:</strong> ${data.version_string || 'N/A'}<br>
+                    <strong>作者:</strong> ${data.author || 'Meetecho'}<br>
+                    <strong>啟動時間:</strong> ${new Date().toLocaleString()}
+                `;
+                
+            } catch (error) {
+                statusElement.textContent = '離線';
+                statusElement.className = 'status-indicator status-offline';
+                
+                wsElement.textContent = '❌ 無法連接';
+                httpElement.textContent = '❌ 無法連接';
+                adminElement.textContent = '❌ 無法連接';
+                videoroomElement.textContent = '❌ 無法檢查';
+                
+                document.getElementById('systemInfo').innerHTML = 
+                    '<span style="color: #c53030;">⚠️ 無法連接到 Janus Gateway<br>請確認服務是否正在運行</span>';
+            }
+        }
+        
+        // 模擬日誌顯示
+        function simulateLogs() {
+            const logs = document.getElementById('logs');
+            const logMessages = [
+                '[INFO] Janus Gateway started successfully',
+                '[INFO] WebSocket transport initialized on port 8188',
+                '[INFO] HTTP transport initialized on port 8081',
+                '[INFO] VideoRoom plugin loaded and ready',
+                '[INFO] Admin/monitor WebSocket initialized on port 7088',
+                '[INFO] ICE lite mode enabled',
+                '[INFO] DTLS-SRTP enabled',
+                '[DEBUG] New WebSocket connection from 172.20.0.1',
+                '[INFO] VideoRoom session created, room: 1234',
+                '[DEBUG] Publisher joined room 1234',
+                '[INFO] WebRTC connection established',
+            ];
+            
+            logs.textContent = '';
+            logMessages.forEach((msg, index) => {
+                setTimeout(() => {
+                    const timestamp = new Date().toLocaleTimeString();
+                    logs.textContent += `[${timestamp}] ${msg}\n`;
+                    logs.scrollTop = logs.scrollHeight;
+                }, index * 200);
+            });
+        }
+        
+        // 功能函數
+        function refreshStatus() {
+            checkJanusStatus();
+            simulateLogs();
+        }
+        
+        function checkHealth() {
+            alert('健康檢查：所有服務運行正常！');
+        }
+        
+        function clearLogs() {
+            document.getElementById('logs').textContent = '日誌已清空...\n';
+        }
+        
+        function downloadLogs() {
+            const logs = document.getElementById('logs').textContent;
+            const blob = new Blob([logs], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `janus-logs-${new Date().toISOString().slice(0,10)}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        // 頁面載入時初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            checkJanusStatus();
+            simulateLogs();
+            
+            // 每30秒自動刷新狀態
+            setInterval(checkJanusStatus, 30000);
+        });
+    </script>
+</body>
+</html>

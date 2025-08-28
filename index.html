@@ -238,8 +238,8 @@
     <!-- 引入 WebRTC Adapter (Janus 依賴) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.2/adapter.min.js"></script>
     
-    <!-- 引入 Janus Gateway JavaScript 庫 (本地版本) -->
-    <script src="http://192.168.6.70:8081/janus.js"></script>
+    <!-- 引入 Janus Gateway JavaScript 庫 (Docker 版本) -->
+    <script src="http://localhost:8081/janus.js"></script>
     
     <script>
         // 全域變數
@@ -398,7 +398,7 @@
             updateStatus('正在連接...', 'status-connecting');
             
             janus = new Janus({
-                server: 'ws://192.168.6.70:8188',
+                server: 'ws://localhost:8188',
                 success: function() {
                     updateStatus('已連接到伺服器', 'status-connected');
                     joinBtn.disabled = false;

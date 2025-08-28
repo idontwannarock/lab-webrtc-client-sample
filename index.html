@@ -1,0 +1,1731 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC 視訊聊天室 - Janus Gateway Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .controls {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .video-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px;
+        }
+        .video-container {
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            position: relative;
+        }
+        video {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            background: #000;
+        }
+        .video-disabled {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #333;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 16px;
+            z-index: 10;
+            text-align: center;
+            line-height: 1.4;
+        }
+        .video-disabled strong {
+            font-size: 18px;
+            margin: 5px 0;
+        }
+        .video-disabled small {
+            font-size: 14px;
+            opacity: 0.8;
+        }
+        .video-label {
+            padding: 10px;
+            text-align: center;
+            font-weight: bold;
+            color: #333;
+            background: rgba(255, 255, 255, 0.9);
+            position: relative;
+            z-index: 20;
+        }
+        .btn {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-primary { background: #007bff; color: white; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn:disabled { background: #ccc; cursor: not-allowed; }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            text-align: center;
+        }
+        .status-disconnected { background: #f8d7da; color: #721c24; }
+        .status-connecting { background: #fff3cd; color: #856404; }
+        .status-connected { background: #d4edda; color: #155724; }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 15px;
+            border-radius: 5px;
+            height: 200px;
+            overflow-y: scroll;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        input[type="text"] {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin: 5px;
+        }
+        
+        /* 聊天區域樣式 */
+        .chat-container {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            height: 500px;
+            display: flex;
+            flex-direction: column;
+        }
+        .chat-messages {
+            flex: 1;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+            overflow-y: auto;
+            background: #fafafa;
+            margin-bottom: 10px;
+        }
+        .chat-input-area {
+            display: flex;
+            gap: 10px;
+        }
+        .chat-input-area input {
+            flex: 1;
+            margin: 0;
+        }
+        .chat-input-area button {
+            margin: 0;
+        }
+        .chat-message {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        .chat-message.own {
+            background: #007bff;
+            color: white;
+            margin-left: auto;
+            text-align: right;
+        }
+        .chat-message.other {
+            background: #e9ecef;
+            color: #333;
+        }
+        .chat-message .sender {
+            font-weight: bold;
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+        .chat-message .content {
+            font-size: 14px;
+        }
+        .chat-message .time {
+            font-size: 11px;
+            opacity: 0.7;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>WebRTC 視訊聊天室</h1>
+        
+        <!-- 連接狀態 -->
+        <div id="status" class="status status-disconnected">
+            未連接到伺服器
+        </div>
+        
+        <!-- 控制面板 -->
+        <div class="controls">
+            <div>
+                <label>房間 ID: </label>
+                <input type="text" id="roomId" value="1234" placeholder="輸入房間號碼">
+                <button id="joinBtn" class="btn btn-success">加入房間</button>
+                <button id="leaveBtn" class="btn btn-danger" disabled>離開房間</button>
+            </div>
+            <div id="roomInfo" style="margin-top: 10px; padding: 10px; background-color: #e9ecef; border-radius: 5px; display: none;">
+                <strong>房間狀態：</strong>
+                <div id="roomStatus">未加入房間</div>
+            </div>
+            <div>
+                <button id="muteBtn" class="btn btn-primary" disabled>靜音</button>
+                <button id="videoBtn" class="btn btn-primary" disabled>關閉視訊</button>
+            </div>
+        </div>
+        
+        <!-- 主要內容區域 -->
+        <div style="display: flex; gap: 20px;">
+            <!-- 視訊區域 -->
+            <div style="flex: 2;">
+                <div class="video-grid" id="videoGrid">
+                    <!-- 本地視訊 -->
+                    <div class="video-container" id="localVideoContainer">
+                        <video id="localVideo" autoplay muted playsinline></video>
+                        <div id="localVideoDisabled" class="video-disabled" style="display: none;">
+                            📷<br>
+                            <strong>我的視訊</strong><br>
+                            <small>視訊已關閉</small>
+                        </div>
+                        <div class="video-label">我的視訊</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 聊天區域 -->
+            <div style="flex: 1; min-width: 300px;">
+                <div class="chat-container">
+                    <h3>聊天室</h3>
+                    <div id="chatMessages" class="chat-messages"></div>
+                    <div class="chat-input-area">
+                        <input type="text" id="chatInput" placeholder="輸入訊息..." disabled>
+                        <button id="sendBtn" class="btn btn-primary" disabled>發送</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 日誌 -->
+        <h3>連接日誌</h3>
+        <div id="log" class="log"></div>
+    </div>
+
+    <!-- 引入 WebRTC Adapter (Janus 依賴) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/webrtc-adapter/8.2.2/adapter.min.js"></script>
+    
+    <!-- 引入 Janus Gateway JavaScript 庫 (本地版本) -->
+    <script src="http://192.168.6.70:8081/janus.js"></script>
+    
+    <script>
+        // 全域變數
+        let janus = null;
+        
+        // Log level 設定
+        const LOG_LEVELS = {
+            ERROR: 0,
+            WARN: 1,
+            INFO: 2,
+            DEBUG: 3
+        };
+        
+        const CURRENT_LOG_LEVEL = LOG_LEVELS.INFO; // 設為 INFO 減少不必要的 debug 訊息
+        let videoRoomHandle = null;
+        let localStream = null;
+        let remoteStreams = {};
+        let isAudioMuted = false;
+        let isVideoMuted = false;
+        let currentRoomId = null;
+        let roomParticipants = new Set(); // 追蹤房間內的用戶
+        let currentUserId = null;
+        let currentUserName = null;
+        let textRoomHandle = null;
+        let textRoomDataChannelOpen = false;
+        
+        // 訊息去重系統
+        const processedMessages = new Map(); // 追蹤已處理的訊息
+        let displayRestoreTimeout = null; // 追蹤 display 恢復 timeout
+        
+        // 生成 UUID v7 (時間戳 + 隨機)
+        function generateUUIDv7() {
+            const timestamp = Date.now();
+            const timestampHex = timestamp.toString(16).padStart(12, '0');
+            const randomHex = Array.from({length: 20}, () => 
+                Math.floor(Math.random() * 16).toString(16)
+            ).join('');
+            
+            return `${timestampHex.slice(0,8)}-${timestampHex.slice(8,12)}-7${randomHex.slice(0,3)}-${randomHex.slice(3,7)}-${randomHex.slice(7,19)}`;
+        }
+        
+        // 清理過期的訊息記錄（防止記憶體洩漏）
+        function cleanupOldMessages() {
+            const now = Date.now();
+            const expireTime = 5 * 60 * 1000; // 5分鐘
+            
+            for (const [key, timestamp] of processedMessages.entries()) {
+                if (now - timestamp > expireTime) {
+                    processedMessages.delete(key);
+                }
+            }
+        }
+        
+        // 定期清理過期訊息
+        setInterval(cleanupOldMessages, 60 * 1000); // 每分鐘清理一次
+        
+        // TextRoom 配置
+        // 你的配置中 room-1234 有 secret = "adminpwd"
+        function getRoomSecret(roomId) {
+            if (roomId == 1234) {
+                return "adminpwd";
+            }
+            return null; // 其他房間不需要密鑰
+        }
+        
+        // DOM 元素
+        const statusDiv = document.getElementById('status');
+        const joinBtn = document.getElementById('joinBtn');
+        const leaveBtn = document.getElementById('leaveBtn');
+        const muteBtn = document.getElementById('muteBtn');
+        const videoBtn = document.getElementById('videoBtn');
+        const roomIdInput = document.getElementById('roomId');
+        const localVideo = document.getElementById('localVideo');
+        const localVideoDisabled = document.getElementById('localVideoDisabled');
+        const videoGrid = document.getElementById('videoGrid');
+        const logDiv = document.getElementById('log');
+        const roomInfo = document.getElementById('roomInfo');
+        const roomStatus = document.getElementById('roomStatus');
+        const chatMessages = document.getElementById('chatMessages');
+        const chatInput = document.getElementById('chatInput');
+        const sendBtn = document.getElementById('sendBtn');
+        
+        // 日誌函數
+        function log(message, level = LOG_LEVELS.INFO) {
+            if (level <= CURRENT_LOG_LEVEL) {
+                const timestamp = new Date().toLocaleTimeString();
+                const levelName = Object.keys(LOG_LEVELS)[level];
+                logDiv.innerHTML += `[${timestamp}] [${levelName}] ${message}<br>`;
+                logDiv.scrollTop = logDiv.scrollHeight;
+                
+                switch(level) {
+                    case LOG_LEVELS.ERROR:
+                        console.error(message);
+                        break;
+                    case LOG_LEVELS.WARN:
+                        console.warn(message);
+                        break;
+                    case LOG_LEVELS.DEBUG:
+                        console.debug(message);
+                        break;
+                    default:
+                        console.log(message);
+                }
+            }
+        }
+        
+        // 更新狀態
+        function updateStatus(status, className) {
+            statusDiv.textContent = status;
+            statusDiv.className = `status ${className}`;
+        }
+        
+        // 更新房間狀態
+        function updateRoomStatus(message, show = true) {
+            roomStatus.innerHTML = message;
+            roomInfo.style.display = show ? 'block' : 'none';
+        }
+        
+        // 更新房間人數
+        function updateRoomParticipants() {
+            if (currentRoomId) {
+                const participantCount = roomParticipants.size + 1; // +1 包含自己
+                updateRoomStatus(`已加入房間 ${currentRoomId}<br>房間內共 ${participantCount} 人`);
+            }
+        }
+        
+        // 檢查 Janus 是否已載入
+        function checkJanusLoaded() {
+            if (typeof Janus === 'undefined') {
+                log('錯誤: Janus Gateway 庫未正確載入', LOG_LEVELS.ERROR);
+                updateStatus('庫載入失敗', 'status-disconnected');
+                return false;
+            }
+            return true;
+        }
+        
+        // 初始化 Janus Gateway
+        function initJanus() {
+            // 檢查 Janus 庫是否載入
+            if (!checkJanusLoaded()) {
+                setTimeout(initJanus, 1000); // 1秒後重試
+                return;
+            }
+            
+            
+            // 初始化 Janus 庫
+            Janus.init({
+                debug: false, // 關閉調試模式
+                callback: function() {
+                    log('已連接到 Janus Gateway');
+                    startJanusConnection();
+                }
+            });
+        }
+        
+        // 開始 Janus 連接
+        function startJanusConnection() {
+            updateStatus('正在連接...', 'status-connecting');
+            
+            janus = new Janus({
+                server: 'ws://192.168.6.70:8188',
+                success: function() {
+                    updateStatus('已連接到伺服器', 'status-connected');
+                    joinBtn.disabled = false;
+                    
+                },
+                error: function(error) {
+                    log('連接失敗: ' + error, LOG_LEVELS.ERROR);
+                    updateStatus('連接失敗', 'status-disconnected');
+                },
+                destroyed: function() {
+                    updateStatus('連接已關閉', 'status-disconnected');
+                    resetUI();
+                }
+            });
+        }
+        
+        
+        // 重置 UI
+        function resetUI() {
+            joinBtn.disabled = false;
+            leaveBtn.disabled = true;
+            muteBtn.disabled = true;
+            videoBtn.disabled = true;
+        }
+        
+        // 加入房間
+        function joinRoom() {
+            const roomId = parseInt(roomIdInput.value);
+            if (!roomId) {
+                alert('請輸入有效的房間號碼');
+                return;
+            }
+            
+            if (!janus) {
+                log('錯誤: 未連接到 Janus Gateway');
+                alert('請先等待連接到伺服器');
+                return;
+            }
+            
+            log(`正在加入房間 ${roomId}...`, LOG_LEVELS.DEBUG);
+            
+            janus.attach({
+                plugin: 'janus.plugin.videoroom',
+                success: function(pluginHandle) {
+                    videoRoomHandle = pluginHandle;
+                    
+                    // 創建房間（如果不存在）
+                    const createMsg = {
+                        request: 'create',
+                        room: roomId,
+                        description: `房間 ${roomId}`,
+                        publishers: 50,
+                        is_private: false
+                    };
+                    
+                    videoRoomHandle.send({ 
+                        message: createMsg,
+                        success: function(result) {
+                            joinExistingRoom(roomId);
+                        },
+                        error: function(error) {
+                            joinExistingRoom(roomId); // 房間可能已存在
+                        }
+                    });
+                },
+                error: function(error) {
+                    log('附加插件失敗: ' + JSON.stringify(error));
+                    alert('無法連接到 VideoRoom 插件，請檢查伺服器設定');
+                },
+                onmessage: function(msg, jsep) {
+                    handleVideoRoomMessage(msg, jsep);
+                },
+                onlocalstream: function(stream) {
+                    log('收到本地媒體流', LOG_LEVELS.DEBUG);
+                    localStream = stream;
+                    localVideo.srcObject = stream;
+                    
+                    joinBtn.disabled = true;
+                    leaveBtn.disabled = false;
+                    muteBtn.disabled = false;
+                    videoBtn.disabled = false;
+                },
+                onremotestream: function(stream) {
+                    log('收到遠程媒體流', LOG_LEVELS.DEBUG);
+                    // 這個會在 subscriber 中處理
+                }
+            });
+        }
+        
+        // 加入現有房間
+        function joinExistingRoom(roomId) {
+            currentUserName = '用戶_' + Math.floor(Math.random() * 1000);
+            const joinMsg = {
+                request: 'join',
+                room: roomId,
+                ptype: 'publisher',
+                display: currentUserName
+            };
+            
+            log(`正在加入房間 ${roomId}...`, LOG_LEVELS.DEBUG);
+            videoRoomHandle.send({ message: joinMsg });
+        }
+        
+        // 處理 VideoRoom 消息
+        function handleVideoRoomMessage(msg, jsep) {
+            const event = msg.videoroom;
+            log(`VideoRoom 事件: ${event}, 完整訊息: ${JSON.stringify(msg)}`, LOG_LEVELS.DEBUG);
+            
+            if (event === 'joined') {
+                log(`成功加入房間 ${msg.room}`);
+                currentRoomId = msg.room;
+                currentUserId = msg.id;
+                
+                // 啟用聊天功能
+                chatInput.disabled = false;
+                sendBtn.disabled = false;
+                
+                // 不再使用 TextRoom，直接啟用 VideoRoom 聊天功能
+                log('聊天功能已啟用，使用 VideoRoom display 方案');
+                
+                // 同時設置基於 Janus WebSocket 的聊天備用方案
+                
+                // 清空並重新設置房間參與者
+                roomParticipants.clear();
+                if (msg.publishers) {
+                    msg.publishers.forEach(publisher => {
+                        roomParticipants.add(publisher.id);
+                    });
+                }
+                updateRoomParticipants();
+                
+                // 獲取本地媒體並發布
+                navigator.mediaDevices.getUserMedia({
+                    video: true,
+                    audio: true
+                }).then(function(stream) {
+                    localStream = stream;
+                    localVideo.srcObject = stream;
+                    
+                    // 更新按鈕狀態
+                    joinBtn.disabled = true;
+                    leaveBtn.disabled = false;
+                    muteBtn.disabled = false;
+                    videoBtn.disabled = false;
+                    
+                    videoRoomHandle.createOffer({
+                        media: { videoRecv: false, audioRecv: false },
+                        stream: stream,
+                        success: function(jsep) {
+                            const publishMsg = { request: 'configure', audio: true, video: true };
+                            videoRoomHandle.send({ message: publishMsg, jsep: jsep });
+                        },
+                        error: function(error) {
+                            log('發布視訊失敗: ' + error);
+                        }
+                    });
+                }).catch(function(error) {
+                    log('無法獲取攝影機權限: ' + error.message);
+                    if (error.name === 'NotAllowedError') {
+                        alert('請允許使用攝影機和麥克風權限！');
+                    }
+                });
+                
+                // 訂閱現有用戶
+                if (msg.publishers) {
+                    for (let publisher of msg.publishers) {
+                        subscribeToPublisher(publisher.id, publisher.display);
+                    }
+                }
+            } else if (event === 'event') {
+                if (msg.publishers) {
+                    // 新用戶加入
+                    for (let publisher of msg.publishers) {
+                        // 檢查是否包含聊天訊息
+                        processChatMessage(publisher.display, publisher.id);
+                        
+                        const cleanDisplayName = getCleanDisplayName(publisher.display);
+                        log(`${cleanDisplayName} 加入房間`);
+                        roomParticipants.add(publisher.id);
+                        subscribeToPublisher(publisher.id, cleanDisplayName);
+                    }
+                    updateRoomParticipants();
+                } else if (msg.leaving) {
+                    // 用戶離開
+                    log(`用戶 ${msg.leaving} 離開房間`);
+                    roomParticipants.delete(msg.leaving);
+                    removeRemoteVideo(msg.leaving);
+                    updateRoomParticipants();
+                } else if (msg.configured === 'ok') {
+                    // 用戶配置更新（可能包含聊天訊息）
+                    log(`VideoRoom configured 事件: ${JSON.stringify(msg)}`, LOG_LEVELS.DEBUG);
+                    if (msg.display) {
+                        processChatMessage(msg.display, msg.id);
+                    }
+                } else if (msg.publishers && msg.publishers.length > 0) {
+                    // 檢查現有用戶的 display 更新（包含聊天訊息）
+                    for (let publisher of msg.publishers) {
+                        if (publisher.display) {
+                            log(`檢查用戶 ${publisher.id} display 更新: ${publisher.display}`);
+                            processChatMessage(publisher.display, publisher.id);
+                        }
+                    }
+                } else if (msg.id && msg.display) {
+                    // 處理單個用戶的 display 更新事件
+                    log(`單個用戶 ${msg.id} display 更新: ${msg.display}`);
+                    processChatMessage(msg.display, msg.id);
+                }
+            }
+            
+            // 處理自定義文字訊息
+            if (msg.body && msg.body.type === 'chat' && msg.body.message && msg.body.sender) {
+                const textMsg = msg.body;
+                log(`收到自定義聊天訊息: ${JSON.stringify(textMsg)}`, LOG_LEVELS.DEBUG);
+                if (textMsg.sender !== currentUserName) {
+                    addChatMessage(textMsg.sender, textMsg.sender, textMsg.message, false);
+                    log(`顯示來自 ${textMsg.sender} 的訊息: ${textMsg.message}`);
+                } else {
+                    log('過濾自己的聊天訊息');
+                }
+            } else if (msg.body && msg.body.message && msg.body.username) {
+                // 兼容舊格式
+                const textMsg = msg.body;
+                if (textMsg.username !== currentUserName) {
+                    addChatMessage(textMsg.userId || 'unknown', textMsg.username, textMsg.message, false);
+                    log(`收到來自 ${textMsg.username} 的訊息: ${textMsg.message}`);
+                }
+            }
+            
+            // 處理 WebRTC 相關
+            if (jsep) {
+                videoRoomHandle.handleRemoteJsep({ jsep: jsep });
+            }
+        }
+        
+        // 訂閱發布者
+        function subscribeToPublisher(publisherId, displayName) {
+            let subscriberHandle = null;
+            
+            janus.attach({
+                plugin: 'janus.plugin.videoroom',
+                success: function(pluginHandle) {
+                    subscriberHandle = pluginHandle;
+                    
+                    const subscribeMsg = {
+                        request: 'join',
+                        room: parseInt(roomIdInput.value),
+                        ptype: 'subscriber',
+                        feed: publisherId
+                    };
+                    
+                    subscriberHandle.send({ message: subscribeMsg });
+                },
+                error: function(error) {
+                    log('訂閱失敗: ' + error);
+                },
+                onmessage: function(msg, jsep) {
+                    if (msg.videoroom === 'attached') {
+                        const startMsg = { request: 'start' };
+                        subscriberHandle.send({ message: startMsg });
+                    }
+                    
+                    if (jsep) {
+                        subscriberHandle.createAnswer({
+                            jsep: jsep,
+                            media: { audioSend: false, videoSend: false },
+                            success: function(answerJsep) {
+                                const startMsg = { request: 'start', room: parseInt(roomIdInput.value) };
+                                subscriberHandle.send({ message: startMsg, jsep: answerJsep });
+                            },
+                            error: function(error) {
+                                log('WebRTC 連接失敗: ' + error);
+                            }
+                        });
+                    }
+                },
+                onremotestream: function(stream) {
+                    log(`收到 ${displayName} 的視訊`);
+                    addRemoteVideo(publisherId, displayName, stream);
+                },
+                onremotetrack: function(track, mid, on, metadata) {
+                    // 手動組合媒體流（某些 Janus 版本需要）
+                    if (metadata && metadata.reason === 'unmute' && on) {
+                        setTimeout(() => {
+                            createRemoteStreamFromTracks(publisherId, displayName, subscriberHandle);
+                        }, 500);
+                    }
+                }
+            });
+        }
+        
+        // 從軌道手動創建遠程媒體流
+        function createRemoteStreamFromTracks(publisherId, displayName, subscriberHandle) {
+            try {
+                const pc = subscriberHandle.webrtcStuff.pc;
+                if (!pc) return;
+                
+                const receivers = pc.getReceivers();
+                if (receivers.length === 0) return;
+                
+                const remoteStream = new MediaStream();
+                let addedTracks = 0;
+                
+                receivers.forEach(receiver => {
+                    if (receiver.track && receiver.track.readyState === 'live') {
+                        remoteStream.addTrack(receiver.track);
+                        addedTracks++;
+                    }
+                });
+                
+                if (addedTracks > 0) {
+                    log(`收到 ${displayName} 的視訊流`);
+                    addRemoteVideo(publisherId, displayName, remoteStream);
+                }
+            } catch (error) {
+                log('視訊流處理錯誤: ' + error.message);
+            }
+        }
+        
+        // 添加遠程視訊
+        function addRemoteVideo(publisherId, displayName, stream) {
+            // 檢查是否已存在
+            if (document.getElementById(`remote_${publisherId}`)) {
+                return;
+            }
+            
+            const videoContainer = document.createElement('div');
+            videoContainer.className = 'video-container';
+            videoContainer.id = `remote_${publisherId}`;
+            
+            const video = document.createElement('video');
+            video.autoplay = true;
+            video.playsinline = true;
+            video.muted = false;
+            video.srcObject = stream;
+            
+            // 創建視訊禁用遮罩
+            const disabledOverlay = document.createElement('div');
+            disabledOverlay.className = 'video-disabled';
+            disabledOverlay.style.display = 'none';
+            disabledOverlay.innerHTML = `
+                📷<br>
+                <strong>${displayName}</strong><br>
+                <small>視訊已關閉</small>
+            `;
+            
+            const label = document.createElement('div');
+            label.className = 'video-label';
+            label.textContent = displayName;
+            
+            // 監聽視訊軌道狀態變化
+            const videoTracks = stream.getVideoTracks();
+            if (videoTracks.length > 0) {
+                const videoTrack = videoTracks[0];
+                let isVideoDisabled = false;
+                let muteTimeout = null;
+                
+                // 監聽軌道變更事件
+                videoTrack.addEventListener('mute', () => {
+                    console.log(`Video track muted for ${displayName}`);
+                    isVideoDisabled = true;
+                    disabledOverlay.style.display = 'flex';
+                    
+                    // 清除之前的超時
+                    if (muteTimeout) {
+                        clearTimeout(muteTimeout);
+                    }
+                    
+                    // 設置超時：如果3秒後沒有 unmute，保持禁用狀態
+                    muteTimeout = setTimeout(() => {
+                        if (isVideoDisabled) {
+                            console.log(`Video remains muted for ${displayName}`);
+                            disabledOverlay.style.display = 'flex';
+                        }
+                    }, 3000);
+                });
+                
+                videoTrack.addEventListener('unmute', () => {
+                    console.log(`Video track unmuted for ${displayName}`);
+                    isVideoDisabled = false;
+                    disabledOverlay.style.display = 'none';
+                    
+                    // 清除超時
+                    if (muteTimeout) {
+                        clearTimeout(muteTimeout);
+                        muteTimeout = null;
+                    }
+                });
+            }
+            
+            videoContainer.appendChild(video);
+            videoContainer.appendChild(disabledOverlay);
+            videoContainer.appendChild(label);
+            videoGrid.appendChild(videoContainer);
+            
+            remoteStreams[publisherId] = stream;
+        }
+        
+        // 移除遠程視訊
+        function removeRemoteVideo(publisherId) {
+            const videoContainer = document.getElementById(`remote_${publisherId}`);
+            if (videoContainer) {
+                videoContainer.remove();
+            }
+            delete remoteStreams[publisherId];
+        }
+        
+        // 離開房間
+        function leaveRoom() {
+            log('正在離開房間...');
+            
+            if (videoRoomHandle) {
+                videoRoomHandle.send({ message: { request: 'leave' } });
+                videoRoomHandle.detach();
+                videoRoomHandle = null;
+            }
+            
+            // 停止本地媒體流
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+                localVideo.srcObject = null;
+            }
+            
+            // 清除遠程視訊
+            Object.keys(remoteStreams).forEach(publisherId => {
+                removeRemoteVideo(publisherId);
+            });
+            remoteStreams = {};
+            
+            // 清空房間狀態
+            currentRoomId = null;
+            roomParticipants.clear();
+            
+            // 重置本地視訊遮罩
+            localVideoDisabled.style.display = 'none';
+            isVideoMuted = false;
+            isAudioMuted = false;
+            
+            // 禁用聊天功能和離開 TextRoom
+            leaveTextRoom();
+            chatInput.disabled = true;
+            sendBtn.disabled = true;
+            chatMessages.innerHTML = '';
+            currentUserId = null;
+            currentUserName = null;
+            
+            // 清理聊天相關的 localStorage
+            localStorage.removeItem('webrtc_chat_broadcast');
+            
+            resetUI();
+            updateRoomStatus('', false);
+            log('已離開房間');
+        }
+        
+        // 聊天相關函數
+        function addSystemMessage(message) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'chat-message system';
+            messageDiv.style.background = '#ffc107';
+            messageDiv.style.color = '#333';
+            messageDiv.style.textAlign = 'center';
+            messageDiv.style.fontStyle = 'italic';
+            messageDiv.innerHTML = `
+                <div class="content">${message}</div>
+                <div class="time">${new Date().toLocaleTimeString()}</div>
+            `;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        function addChatMessage(senderId, senderName, message, isOwnMessage = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `chat-message ${isOwnMessage ? 'own' : 'other'}`;
+            
+            messageDiv.innerHTML = `
+                ${!isOwnMessage ? `<div class="sender">${senderName}</div>` : ''}
+                <div class="content">${message}</div>
+                <div class="time">${new Date().toLocaleTimeString()}</div>
+            `;
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        // 已完全移除 TextRoom 聊天系統，統一使用 VideoRoom display 方案
+        // 
+        // 移除的 TextRoom 函數：
+        // - setupTextRoom() 
+        // - joinTextRoom()
+        // - diagnoseTextRoomStatus()
+        // - handleTextRoomMessage()
+        // - handleTextRoomJsep()
+        // - leaveTextRoom()
+        //
+        // 聊天功能現在完全依賴 VideoRoom 的 display 屬性更新機制
+        
+        // 所有 TextRoom 函數已替換為 no-op 實現，防止錯誤呼叫
+        function setupTextRoom() { return; }
+        function joinTextRoom() { return; }  
+        function diagnoseTextRoomStatus() { return; }
+        function joinTextRoomForMessaging() { return; }
+        function handleTextRoomMessage() { return; }
+        function handleTextRoomJsep() { return; }
+        function leaveTextRoom() { return; }
+        function setupDataChannelConnection() { return; }
+        
+        // === 以下為 sendChatMessage 相關函數 ===
+        
+        function sendChatMessage() {
+                    
+                    // TextRoom 0.0.2 版本：直接進行 setup
+                    joinTextRoom(roomId, username);
+                },
+                error: function(error) {
+                    log('TextRoom 插件連接失敗: ' + error);
+                    log('可能原因:');
+                    log('1. Janus 服務器未啟用 TextRoom 插件');
+                    log('2. TextRoom 插件版本不兼容');
+                    log('3. Janus Gateway 配置問題');
+                    log('自動切換到備用聊天方案');
+                    // 使用備用聊天方案
+                    setupFallbackChat();
+                },
+                onmessage: function(msg, jsep) {
+                    handleTextRoomMessage(msg);
+                    handleTextRoomJsep(jsep);
+                },
+                ondataopen: function(data) {
+                    log('TextRoom 數據通道已開啟 - 可以發送數據了');
+                    log(`數據通道詳情: ${JSON.stringify(data)}`);
+                    textRoomDataChannelOpen = true;
+                },
+                ondata: function(data) {
+                    log('收到 TextRoom 數據通道訊息: ' + data, LOG_LEVELS.DEBUG);
+                    try {
+                        const chatData = JSON.parse(data);
+                        log(`解析聊天數據: ${JSON.stringify(chatData)}`);
+                        
+                        // 檢查多種可能的訊息格式
+                        const senderName = chatData.username || chatData.from || chatData.user;
+                        const messageText = chatData.message || chatData.text || chatData.msg;
+                        
+                        if (senderName && senderName !== currentUserName && messageText) {
+                            addChatMessage(senderName, senderName, messageText, false);
+                            log(`通過 TextRoom DataChannel 收到來自 ${senderName} 的訊息: ${messageText}`);
+                        } else {
+                            log(`訊息過濾或格式不匹配: 發送者=${senderName}, 內容=${messageText}`);
+                        }
+                    } catch (error) {
+                        log('解析 TextRoom 數據通道訊息失敗: ' + error);
+                        log('原始數據: ' + data);
+                    }
+                },
+                // 添加額外的事件處理器，以防 TextRoom 0.0.2 使用不同的事件機制
+                ondatachannel: function(datachannel) {
+                    log('收到 DataChannel 對象: ' + datachannel);
+                    if (datachannel && datachannel.onmessage) {
+                        datachannel.onmessage = function(event) {
+                            log('通過原生 DataChannel 收到訊息: ' + event.data);
+                            try {
+                                const chatData = JSON.parse(event.data);
+                                const senderName = chatData.username || chatData.from || chatData.user;
+                                const messageText = chatData.message || chatData.text || chatData.msg;
+                                
+                                if (senderName && senderName !== currentUserName && messageText) {
+                                    addChatMessage(senderName, senderName, messageText, false);
+                                    log(`通過原生 DataChannel 收到來自 ${senderName} 的訊息: ${messageText}`);
+                                }
+                            } catch (error) {
+                                log('解析原生 DataChannel 訊息失敗: ' + error);
+                            }
+                        };
+                    }
+                }
+            });
+        }
+        
+        // 加入 TextRoom 聊天房間
+        function joinTextRoom(roomId, username) {
+            if (!textRoomHandle) return;
+            
+            log('測試 TextRoom 0.0.2 支援的 API 請求...', LOG_LEVELS.DEBUG);
+            
+            // 測試 TextRoom 0.0.2 的基本請求
+            const testRequests = [
+                { request: "list" },  // 列出房間
+                { request: "exists", room: parseInt(roomId) },  // 檢查房間是否存在  
+                { request: "listparticipants", room: parseInt(roomId) },  // 列出參與者
+                { request: "edit", room: parseInt(roomId), new_description: "測試房間" },  // 測試編輯
+                {}  // 空請求
+            ];
+            
+            let testIndex = 0;
+            
+            function testNextRequest() {
+                if (testIndex >= testRequests.length) {
+                    log('API 測試完成，TextRoom 不支援多用戶聊天，將使用 VideoRoom 替代方案');
+                    setupFallbackChat();
+                    return;
+                }
+                
+                const testMsg = { ...testRequests[testIndex] };
+                
+                // 為 room 1234 添加密鑰
+                const roomSecret = getRoomSecret(roomId);
+                if (roomSecret !== null && testMsg.room) {
+                    testMsg.secret = roomSecret;
+                }
+                
+                log(`測試請求 ${testIndex + 1}: ${JSON.stringify(testMsg)}`, LOG_LEVELS.DEBUG);
+                
+                textRoomHandle.send({
+                    message: testMsg,
+                    success: function(result) {
+                        log(`測試 ${testIndex + 1} 結果: ${JSON.stringify(result)}`, LOG_LEVELS.DEBUG);
+                        
+                        if (result && !result.error_code) {
+                            log(`找到可用的 API 請求！但 TextRoom 0.0.2 不支援多用戶聊天，使用 VideoRoom 替代方案`);
+                            setupFallbackChat();
+                            return;
+                        }
+                        
+                        testIndex++;
+                        testNextRequest();
+                    },
+                    error: function(error) {
+                        log(`測試 ${testIndex + 1} 錯誤: ${error}`);
+                        testIndex++;
+                        testNextRequest();
+                    }
+                });
+            }
+            
+            testNextRequest();
+        }
+        
+        // 診斷 TextRoom 狀態
+        function diagnoseTextRoomStatus(roomId) {
+            if (!textRoomHandle) return;
+            
+            log('=== TextRoom 狀態診斷 ===');
+            
+            // 再次查詢房間資訊
+            textRoomHandle.send({
+                message: { request: "list" },
+                success: function(result) {
+                    log(`房間列表: ${JSON.stringify(result)}`);
+                    
+                    if (result && result.list) {
+                        const room = result.list.find(r => r.room == roomId);
+                        if (room) {
+                            log(`房間 ${roomId} 狀態:`);
+                            log(`- 參與者數量: ${room.num_participants}`);
+                            log(`- 歷史訊息: ${room.history}`);
+                            log(`- 需要密碼: ${room.pin_required}`);
+                        }
+                    }
+                }
+            });
+            
+            // 查詢房間參與者
+            const roomSecret = getRoomSecret(roomId);
+            const participantsMsg = { 
+                request: "listparticipants", 
+                room: parseInt(roomId) 
+            };
+            if (roomSecret !== null) {
+                participantsMsg.secret = roomSecret;
+            }
+            
+            textRoomHandle.send({
+                message: participantsMsg,
+                success: function(result) {
+                    log(`房間 ${roomId} 參與者: ${JSON.stringify(result)}`);
+                },
+                error: function(error) {
+                    log(`查詢參與者失敗: ${error}`);
+                }
+            });
+        }
+        
+        // DataChannel 建立成功後加入房間以接收訊息
+        function joinTextRoomForMessaging(roomId, username) {
+            if (!textRoomHandle) return;
+            
+            log(`嘗試加入 TextRoom ${roomId} 以接收訊息...`);
+            
+            const joinMsg = {
+                request: "join",
+                room: parseInt(roomId),
+                username: username || currentUserName || `user_${Date.now()}`,
+                display: username || currentUserName || `User ${Date.now()}`
+            };
+            
+            // 為 room 1234 添加密鑰
+            const roomSecret = getRoomSecret(roomId);
+            if (roomSecret !== null) {
+                joinMsg.secret = roomSecret;
+            }
+            
+            log(`發送 join 請求: ${JSON.stringify(joinMsg)}`, LOG_LEVELS.DEBUG);
+            
+            textRoomHandle.send({
+                message: joinMsg,
+                success: function(result) {
+                    log(`Join 結果: ${JSON.stringify(result)}`, LOG_LEVELS.DEBUG);
+                    
+                    if (result && result.error_code) {
+                        log(`Join 失敗: ${result.error} (code: ${result.error_code})`, LOG_LEVELS.DEBUG);
+                        if (result.error_code === 415) {
+                            log('TextRoom 0.0.2 可能不需要明確的 join 請求，DataChannel 應該已經可以收發訊息');
+                        }
+                    } else {
+                        log('成功加入 TextRoom，現在可以收發訊息');
+                    }
+                },
+                error: function(error) {
+                    log(`Join 請求失敗: ${error}`);
+                    log('即使 join 失敗，DataChannel 可能仍可正常工作');
+                }
+            });
+        }
+        
+        // 設置 DataChannel 連接
+        function setupDataChannelConnection(roomId, username) {
+            log(`直接建立 TextRoom DataChannel 連接...`);
+            
+            // TextRoom 0.0.2 可能不需要特定的 API 請求，直接建立 DataChannel
+            textRoomHandle.createOffer({
+                media: { audio: false, video: false, data: true },
+                success: function(jsep) {
+                    log('TextRoom DataChannel Offer 創建成功');
+                    log('JSEP Offer: ' + JSON.stringify(jsep));
+                    
+                    // 嘗試不同的 DataChannel 建立方式
+                    const connectionAttempts = [
+                        // 方式1: 使用 setup 請求建立 DataChannel
+                        { 
+                            message: { 
+                                request: "setup",
+                                room: parseInt(roomId)
+                            }, 
+                            jsep: jsep 
+                        },
+                        // 方式2: 使用 join 請求
+                        { 
+                            message: { 
+                                request: "join",
+                                room: parseInt(roomId),
+                                username: username || `user_${Date.now()}`,
+                                display: username || `User ${Date.now()}`
+                            }, 
+                            jsep: jsep 
+                        },
+                        // 方式3: 使用 create 請求
+                        {
+                            message: {
+                                request: "create", 
+                                room: parseInt(roomId),
+                                description: `聊天房間 ${roomId}`
+                            },
+                            jsep: jsep
+                        }
+                    ];
+                    
+                    let attemptIndex = 0;
+                    
+                    function tryNextConnection() {
+                        if (attemptIndex >= connectionAttempts.length) {
+                            log('所有 DataChannel 連接嘗試都失敗，使用備用方案');
+                            setupFallbackChat();
+                            return;
+                        }
+                        
+                        const attempt = { ...connectionAttempts[attemptIndex] };
+                        
+                        // 為 room 1234 添加密鑰
+                        const roomSecret = getRoomSecret(roomId);
+                        if (roomSecret !== null && attempt.message) {
+                            attempt.message.secret = roomSecret;
+                        }
+                        
+                        log(`DataChannel 連接嘗試 ${attemptIndex + 1}: ${JSON.stringify(attempt.message)}`);
+                        
+                        textRoomHandle.send({
+                            ...attempt,
+                            success: function(result) {
+                                log(`DataChannel 嘗試 ${attemptIndex + 1} 結果: ${JSON.stringify(result)}`);
+                                
+                                if (result && result.error_code) {
+                                    log(`嘗試 ${attemptIndex + 1} 失敗: ${result.error}`);
+                                    attemptIndex++;
+                                    tryNextConnection();
+                                } else {
+                                    log(`DataChannel 嘗試 ${attemptIndex + 1} 成功！`);
+                                    textRoomDataChannelOpen = true;
+                                    log('TextRoom DataChannel 已開啟，聊天功能可用');
+                                    
+                                    // 診斷 TextRoom 狀態
+                                    diagnoseTextRoomStatus(roomId);
+                                    
+                                    // DataChannel 建立成功後，嘗試加入房間以接收其他用戶的訊息
+                                    joinTextRoomForMessaging(roomId, username);
+                                }
+                            },
+                            error: function(error) {
+                                log(`DataChannel 嘗試 ${attemptIndex + 1} 錯誤: ${error}`);
+                                attemptIndex++;
+                                tryNextConnection();
+                            }
+                        });
+                    }
+                    
+                    tryNextConnection();
+                },
+                error: function(error) {
+                    log('TextRoom DataChannel Offer 創建失敗: ' + error);
+                    setupFallbackChat();
+                }
+            });
+        }
+        
+        // 處理 TextRoom 訊息
+        function handleTextRoomMessage(msg) {
+            log('TextRoom 收到訊息: ' + JSON.stringify(msg));
+            
+            const event = msg.textroom;
+            log(`TextRoom 事件類型: ${event}`);
+            
+            if (event === 'joined') {
+                log(`成功加入 TextRoom，用戶名: ${msg.username}`);
+                if (msg.participants) {
+                    log(`房間內現有用戶: ${msg.participants.map(p => p.username).join(', ')}`);
+                }
+            } else if (event === 'join') {
+                if (msg.username !== currentUserName) {
+                    addSystemMessage(`${msg.username} 加入了聊天室`);
+                    log(`${msg.username} 加入了聊天室`);
+                }
+            } else if (event === 'leave') {
+                if (msg.username !== currentUserName) {
+                    addSystemMessage(`${msg.username} 離開了聊天室`);
+                    log(`${msg.username} 離開了聊天室`);
+                }
+            } else if (event === 'message' || event === 'announcement' || event === 'sent' || event === 'received') {
+                log(`收到聊天訊息事件！`);
+                log(`事件: ${event}`);
+                log(`完整訊息: ${JSON.stringify(msg)}`);
+                
+                // TextRoom 的訊息格式可能不同，檢查多種可能的字段
+                const senderName = msg.from || msg.username || msg.sender || msg.display;
+                const messageText = msg.text || msg.message || msg.content;
+                
+                log(`解析結果 - 發送者: ${senderName}, 內容: ${messageText}`);
+                
+                if (senderName && senderName !== currentUserName && messageText) {
+                    addChatMessage(senderName, senderName, messageText, false);
+                    log(`成功顯示來自 ${senderName} 的訊息: ${messageText}`);
+                } else {
+                    log(`訊息過濾或解析失敗:`);
+                    log(`- 發送者: ${senderName} (當前用戶: ${currentUserName})`);
+                    log(`- 內容: ${messageText}`);
+                    log(`- 是否為自己的訊息: ${senderName === currentUserName}`);
+                }
+            } else if (event === 'error') {
+                log(`TextRoom 錯誤: ${msg.error}`);
+                if (msg.error_code) {
+                    log(`錯誤代碼: ${msg.error_code}`);
+                }
+            } else if (event === 'success') {
+                log(`TextRoom 操作成功`);
+            } else if (event === 'setup') {
+                log('TextRoom setup 完成，準備建立 DataChannel');
+            } else {
+                log(`未處理的 TextRoom 事件: ${event}`);
+                log(`完整訊息內容: ${JSON.stringify(msg)}`);
+            }
+        }
+        
+        // 處理 TextRoom JSEP (用於 DataChannel 建立)
+        function handleTextRoomJsep(jsep) {
+            if (jsep) {
+                log('收到 TextRoom JSEP，處理 answer');
+                textRoomHandle.handleRemoteJsep({
+                    jsep: jsep,
+                    success: function() {
+                        log('TextRoom DataChannel 連接建立成功');
+                    },
+                    error: function(error) {
+                        log('TextRoom DataChannel 建立失敗: ' + error);
+                    }
+                });
+            }
+        }
+        
+        // 離開 TextRoom
+        function leaveTextRoom() {
+            if (textRoomHandle) {
+                const leaveMsg = {
+                    request: 'leave'
+                };
+                
+                // 添加房間密鑰（如果需要）
+                const roomSecret = getRoomSecret(currentRoomId);
+                if (roomSecret !== null) {
+                    leaveMsg.secret = roomSecret;
+                }
+                
+                textRoomHandle.send({ message: leaveMsg });
+                textRoomHandle.detach();
+                textRoomHandle = null;
+                log('已離開 TextRoom 聊天');
+            }
+        }
+        
+        // 嘗試基本的文字發送方法
+        function tryBasicTextSend(message) {
+            if (!textRoomHandle) {
+                log('TextRoom handle 不存在，使用備用方案');
+                broadcastChatMessage(message, currentUserName, currentUserId);
+                return;
+            }
+            
+            // 嘗試不同的請求格式
+            const basicRequests = [
+                { request: 'text', text: message },
+                { request: 'post', text: message },
+                { text: message }, // 無請求類型
+            ];
+            
+            let requestIndex = 0;
+            
+            function tryNextRequest() {
+                if (requestIndex >= basicRequests.length) {
+                    log('TextRoom 請求都失敗，使用 VideoRoom 聊天方案');
+                    sendChatViaVideoRoom(message);
+                    return;
+                }
+                
+                const testMsg = { ...basicRequests[requestIndex] };
+                testMsg.room = parseInt(currentRoomId);
+                
+                // 添加密鑰
+                const roomSecret = getRoomSecret(currentRoomId);
+                if (roomSecret !== null) {
+                    testMsg.secret = roomSecret;
+                }
+                
+                log(`嘗試基本請求 ${requestIndex + 1}: ${JSON.stringify(testMsg)}`);
+                
+                textRoomHandle.send({
+                    message: testMsg,
+                    success: function(result) {
+                        if (result && result.error_code) {
+                            log(`基本請求 ${requestIndex + 1} 失敗: ${result.error}`);
+                            requestIndex++;
+                            tryNextRequest();
+                        } else {
+                            log(`基本請求 ${requestIndex + 1} 成功！`);
+                        }
+                    },
+                    error: function(error) {
+                        log(`基本請求 ${requestIndex + 1} 錯誤: ${error}`);
+                        requestIndex++;
+                        tryNextRequest();
+                    }
+                });
+            }
+            
+            tryNextRequest();
+        }
+        
+        // TextRoom 相關函數已移除，現在統一使用 VideoRoom 聊天方案
+        
+        // 設置基於 Janus WebSocket 的聊天系統
+        
+        // 備用聊天方案（如果 TextRoom 不可用）
+        function setupFallbackChat() {
+            log('TextRoom 不可用，啟用備用聊天方案');
+            
+            // 啟用 localStorage 和 BroadcastChannel 聊天
+            if (window.BroadcastChannel && !window.chatChannel) {
+                window.chatChannel = new BroadcastChannel('webrtc-chat');
+                window.chatChannel.addEventListener('message', function(event) {
+                    const data = event.data;
+                    if (data.type === 'chat' && 
+                        data.room === currentRoomId && 
+                        data.userId !== currentUserId) {
+                        addChatMessage(data.userId, data.username, data.text, false);
+                        log(`收到來自 ${data.username} 的備用聊天訊息: ${data.text}`);
+                    } else if (data.type === 'user_joined' && data.userId !== currentUserId) {
+                        addSystemMessage(`${data.username} 加入了聊天室（本地模式）`);
+                    } else if (data.type === 'user_left' && data.userId !== currentUserId) {
+                        addSystemMessage(`${data.username} 離開了聊天室（本地模式）`);
+                    }
+                });
+                
+                // 廣播用戶加入事件
+                window.chatChannel.postMessage({
+                    type: 'user_joined',
+                    room: currentRoomId,
+                    username: currentUserName,
+                    userId: currentUserId,
+                    timestamp: Date.now()
+                });
+            }
+            
+            log('備用聊天方案已啟用（支援同機器多標籤頁聊天）');
+        }
+        
+        function sendChatMessage() {
+            const message = chatInput.value.trim();
+            if (!message || !currentRoomId) return;
+            
+            // 顯示自己的訊息
+            addChatMessage(currentUserId, currentUserName, message, true);
+            
+            // TextRoom 0.0.2 不支援多用戶聊天，使用 VideoRoom 替代方案
+            if (videoRoomHandle) {
+                log(`使用 VideoRoom 發送聊天訊息: ${message}`);
+                sendChatViaVideoRoom(message);
+            } else {
+                log('VideoRoom 不可用，使用備用方案');
+                broadcastChatMessage(message, currentUserName, currentUserId);
+            }
+            
+            chatInput.value = '';
+        }
+        
+        // 使用 VideoRoom 發送聊天訊息
+        function sendChatViaVideoRoom(message) {
+            if (!videoRoomHandle || !currentRoomId || !currentUserName) {
+                log('VideoRoom 聊天發送失敗：缺少必要參數');
+                broadcastChatMessage(message, currentUserName, currentUserId);
+                return;
+            }
+            
+            // VideoRoom configure 不會廣播 display 變化，改用 publish 重新發布
+            const chatPayload = {
+                type: 'chat',
+                message: message,
+                sender: currentUserName,
+                timestamp: Date.now(),
+                messageId: generateUUIDv7()  // 使用全域唯一 ID
+            };
+            
+            const newDisplay = `${currentUserName}|CHAT:${JSON.stringify(chatPayload)}`;
+            
+            log(`發送聊天訊息: "${message}"`, LOG_LEVELS.INFO);
+            
+            // 直接使用 configure display 方法（因為 VideoRoom 不支援自定義 message 請求）
+            attemptRepublish();
+            
+            function attemptRepublish() {
+                // 使用 configure 更新 display，而不是重新發布
+                const configureMsg = { 
+                    request: 'configure',
+                    display: newDisplay
+                };
+                
+                log(`嘗試通過 configure 更新 display: ${JSON.stringify(configureMsg)}`, LOG_LEVELS.DEBUG);
+                
+                videoRoomHandle.send({ 
+                    message: configureMsg,
+                    success: function(result) {
+                        log(`Configure display 結果: ${JSON.stringify(result)}`, LOG_LEVELS.DEBUG);
+                        
+                        if (result && result.error_code) {
+                            log(`Configure display 被拒絕: ${result.error}，使用備用方案`);
+                            broadcastChatMessage(message, currentUserName, currentUserId);
+                        } else {
+                            log('Display 更新發送成功');
+                            
+                            // 分層式重複發送以提高可靠性
+                            const retryDisplayUpdate = (attempt) => {
+                                if (attempt > 3) return; // 最多重試3次
+                                
+                                setTimeout(() => {
+                                    log(`第 ${attempt} 次重複發送 display 更新`, LOG_LEVELS.DEBUG);
+                                    videoRoomHandle.send({
+                                        message: {
+                                            request: 'configure',
+                                            display: newDisplay
+                                        },
+                                        success: function(result) {
+                                            log(`第 ${attempt} 次發送成功`, LOG_LEVELS.DEBUG);
+                                        },
+                                        error: function(error) {
+                                            log(`第 ${attempt} 次發送失敗: ${error}`);
+                                            retryDisplayUpdate(attempt + 1);
+                                        }
+                                    });
+                                }, attempt * 800);
+                            };
+                            
+                            retryDisplayUpdate(1);
+                            
+                            // 只設置一次恢復 timeout，避免重複
+                            if (!displayRestoreTimeout) {
+                                displayRestoreTimeout = setTimeout(() => {
+                                    log('現在恢復原始 display');
+                                    videoRoomHandle.send({ 
+                                        message: { 
+                                            request: 'configure', 
+                                            display: currentUserName 
+                                        },
+                                        success: function(restoreResult) {
+                                            log(`原始 display 恢復結果: ${JSON.stringify(restoreResult)}`, LOG_LEVELS.DEBUG);
+                                        }
+                                    });
+                                    displayRestoreTimeout = null; // 重置 timeout 追蹤
+                                }, 8000);
+                            }
+                        }
+                    },
+                    error: function(error) {
+                        log(`Configure display 請求失敗: ${error}`);
+                        broadcastChatMessage(message, currentUserName, currentUserId);
+                    }
+                });
+            }
+        }
+        
+        // 已移除 TextRoom DataChannel 發送功能，統一使用 VideoRoom display 方案
+        
+        // 處理聊天訊息
+        function processChatMessage(displayName, publisherId) {
+            if (!displayName || !displayName.includes('|CHAT:')) return;
+            
+            try {
+                const parts = displayName.split('|CHAT:');
+                if (parts.length !== 2) return;
+                
+                let chatData;
+                const chatPart = parts[1];
+                
+                try {
+                    // 嘗試直接解析 JSON
+                    chatData = JSON.parse(chatPart);
+                } catch {
+                    // 如果失敗，嘗試 base64 解碼後解析
+                    const chatDataStr = atob(chatPart);
+                    chatData = JSON.parse(chatDataStr);
+                }
+                
+                log(`解析到聊天數據: ${JSON.stringify(chatData)}`, LOG_LEVELS.DEBUG);
+                
+                // 使用訊息內建的唯一 ID，如果沒有則回退到舊方案
+                const messageId = chatData.messageId || `${chatData.sender || chatData.username}_${chatData.timestamp}`;
+                
+                // 檢查是否已處理過此訊息
+                if (processedMessages.has(messageId)) {
+                    log(`跳過重複訊息: ${messageId}`, LOG_LEVELS.DEBUG);
+                    return;
+                }
+                
+                // 記錄已處理的訊息
+                processedMessages.set(messageId, Date.now());
+                log(`新訊息已記錄: ${messageId}`, LOG_LEVELS.DEBUG);
+                
+                // 檢查消息發送者，避免顯示自己的訊息
+                if (chatData.sender && chatData.sender !== currentUserName && chatData.type === 'chat') {
+                    addChatMessage(chatData.sender, chatData.sender, chatData.message, false);
+                    log(`收到來自 ${chatData.sender} 的訊息: ${chatData.message}`);
+                } else if (chatData.userId && chatData.userId !== currentUserId && chatData.type === 'chat') {
+                    // 兼容舊格式
+                    addChatMessage(chatData.userId, chatData.username, chatData.text, false);
+                    log(`收到來自 ${chatData.username} 的訊息: ${chatData.text}`);
+                } else {
+                    log(`過濾自己的訊息或非聊天訊息: sender=${chatData.sender}, currentUser=${currentUserName}`, LOG_LEVELS.DEBUG);
+                }
+            } catch (error) {
+                log(`聊天訊息解析失敗: ${error}`);
+                log(`原始 displayName: ${displayName}`);
+            }
+        }
+        
+        // 獲取清理後的顯示名稱
+        function getCleanDisplayName(displayName) {
+            if (!displayName) return 'Unknown';
+            if (displayName.includes('|CHAT:')) {
+                return displayName.split('|CHAT:')[0];
+            }
+            return displayName;
+        }
+        
+        // 備用聊天訊息廣播（用於 TextRoom 不可用時）
+        function broadcastChatMessage(message, senderName, senderId) {
+            const chatData = {
+                type: 'chat',
+                room: currentRoomId,
+                username: senderName,
+                userId: senderId,
+                text: message,
+                timestamp: Date.now(),
+                messageId: generateUUIDv7()  // 備用方案也使用唯一 ID
+            };
+            
+            // 使用 BroadcastChannel（如果支援）
+            if (window.chatChannel) {
+                window.chatChannel.postMessage(chatData);
+                log(`通過 BroadcastChannel 廣播訊息: ${message}`);
+            }
+            
+            // 同時使用 localStorage 作為備用
+            localStorage.setItem('webrtc_chat_broadcast', JSON.stringify(chatData));
+            
+            // 模擬延遲後的回覆（僅用於演示單用戶測試）
+            setTimeout(() => {
+                if (Math.random() > 0.7) { // 30% 機率模擬回覆
+                    const responses = [
+                        '收到你的訊息了！',
+                        '👍',
+                        '好的',
+                        '了解',
+                        `回覆：${message.slice(0, 10)}...`
+                    ];
+                    const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+                    addChatMessage('demo_user', '演示用戶', randomResponse, false);
+                }
+            }, 2000 + Math.random() * 3000);
+        }
+        
+        // 監聽其他標籤頁的聊天訊息
+        window.addEventListener('storage', function(e) {
+            if (e.key === 'webrtc_chat_broadcast' && e.newValue && currentRoomId) {
+                try {
+                    const chatData = JSON.parse(e.newValue);
+                    // 只接收相同房間且不是自己發送的訊息
+                    if (chatData.type === 'chat' && 
+                        chatData.room === currentRoomId && 
+                        chatData.userId !== currentUserId) {
+                        addChatMessage(chatData.userId, chatData.username, chatData.text, false);
+                        log(`收到來自 ${chatData.username} 的訊息: ${chatData.text}`);
+                    }
+                } catch (error) {
+                    log('處理聊天訊息失敗: ' + error.message);
+                }
+            }
+        });
+        
+        // 切換靜音
+        function toggleMute() {
+            if (!localStream || !videoRoomHandle) return;
+            
+            isAudioMuted = !isAudioMuted;
+            
+            // 更新本地軌道狀態
+            const audioTrack = localStream.getAudioTracks()[0];
+            if (audioTrack) {
+                audioTrack.enabled = !isAudioMuted;
+            }
+            
+            // 通知 Janus Gateway 更新音訊狀態
+            const configureMsg = {
+                request: 'configure',
+                audio: !isAudioMuted,
+                video: !isVideoMuted
+            };
+            
+            videoRoomHandle.send({ message: configureMsg });
+            
+            muteBtn.textContent = isAudioMuted ? '取消靜音' : '靜音';
+            log(isAudioMuted ? '已靜音' : '已取消靜音');
+        }
+        
+        // 切換視訊
+        function toggleVideo() {
+            if (!localStream || !videoRoomHandle) return;
+            
+            isVideoMuted = !isVideoMuted;
+            
+            // 更新本地軌道狀態
+            const videoTrack = localStream.getVideoTracks()[0];
+            if (videoTrack) {
+                videoTrack.enabled = !isVideoMuted;
+            }
+            
+            // 更新本地視訊遮罩顯示
+            if (isVideoMuted) {
+                localVideoDisabled.style.display = 'flex';
+            } else {
+                localVideoDisabled.style.display = 'none';
+            }
+            
+            // 通知 Janus Gateway 更新視訊狀態
+            const configureMsg = {
+                request: 'configure',
+                audio: !isAudioMuted,
+                video: !isVideoMuted
+            };
+            
+            videoRoomHandle.send({ message: configureMsg });
+            
+            videoBtn.textContent = isVideoMuted ? '開啟視訊' : '關閉視訊';
+            log(isVideoMuted ? '已關閉視訊' : '已開啟視訊');
+        }
+        
+        // 事件監聽器
+        joinBtn.addEventListener('click', joinRoom);
+        leaveBtn.addEventListener('click', leaveRoom);
+        muteBtn.addEventListener('click', toggleMute);
+        videoBtn.addEventListener('click', toggleVideo);
+        sendBtn.addEventListener('click', sendChatMessage);
+        
+        // Enter 鍵發送訊息
+        chatInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendChatMessage();
+            }
+        });
+        
+        // 頁面載入時初始化
+        window.addEventListener('load', function() {
+            log('正在初始化視訊聊天室...');
+            initJanus();
+        });
+        
+        // 頁面關閉時清理
+        window.addEventListener('beforeunload', function() {
+            if (janus) {
+                janus.destroy();
+            }
+        });
+    </script>
+</body>
+</html>

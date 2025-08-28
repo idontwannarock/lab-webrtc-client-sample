@@ -1,0 +1,92 @@
+正在初始化視訊聊天室...
+已連接到 Janus Gateway
+成功加入房間 1234
+TextRoom 插件連接成功
+找到可用的 API 請求！繼續建立 DataChannel
+直接建立 TextRoom DataChannel 連接...
+TextRoom DataChannel Offer 創建成功
+JSEP Offer: {"sdp":"v=0\r\no=- 6998746619991222176 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0\r\na=extmap-allow-mixed\r\na=msid-semantic: WMS\r\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\nc=IN IP4 0.0.0.0\r\na=ice-ufrag:ifsZ\r\na=ice-pwd:kzCeKr/Ynev+fWAHq52cYEJj\r\na=ice-options:trickle\r\na=fingerprint:sha-256 21:49:8D:D4:8B:D9:F3:C9:11:D2:CC:52:DD:86:BB:EE:E7:AF:D3:C0:D8:42:D3:C1:B4:B6:0B:9C:FE:E9:BB:B6\r\na=setup:actpass\r\na=mid:0\r\na=sctp-port:5000\r\na=max-message-size:262144\r\n","type":"offer"}
+DataChannel 連接嘗試 1: {"request":"setup","room":1234,"secret":"adminpwd"}
+DataChannel 嘗試 1 結果: undefined
+DataChannel 嘗試 1 成功！
+TextRoom DataChannel 已開啟，聊天功能可用
+=== TextRoom 狀態診斷 ===
+嘗試加入 TextRoom 1234 以接收訊息...
+TextRoom 收到訊息: {"textroom":"event","result":"ok"}
+TextRoom 事件類型: event
+未處理的 TextRoom 事件: event
+完整訊息內容: {"textroom":"event","result":"ok"}
+收到 TextRoom JSEP，處理 answer
+房間列表: {"textroom":"success","list":[{"room":1234,"description":"Demo Room","pin_required":false,"num_participants":0,"history":0}]}
+房間 1234 狀態:
+- 參與者數量: 0
+- 歷史訊息: 0
+- 需要密碼: false
+房間 1234 參與者: {"room":1234,"participants":[]}
+TextRoom 0.0.2 可能不需要明確的 join 請求，DataChannel 應該已經可以收發訊息
+TextRoom DataChannel 連接建立成功
+收到 用戶_130 的視訊流
+收到 用戶_130 的視訊流
+收到 用戶_998 的視訊流
+收到 用戶_998 的視訊流
+收到 用戶_913 的視訊流
+收到 用戶_913 的視訊流
+index.html:732 Video track muted for 用戶_130
+已靜音
+index.html:744 Video remains muted for 用戶_130
+已關閉視訊
+單個用戶 7376455352080406 display 更新: 用戶_130|CHAT:{"type":"chat","message":"hi","sender":"用戶_130","timestamp":1756363923214}
+解析到聊天數據: {"type":"chat","message":"hi","sender":"用戶_130","timestamp":1756363923214}
+收到來自 用戶_130 的訊息: hi
+單個用戶 7376455352080406 display 更新: 用戶_130
+已取消靜音
+用戶 7313765655100879 離開房間
+index.html:732 Video track muted for 用戶_913
+已靜音
+index.html:744 Video remains muted for 用戶_913
+使用 VideoRoom 發送聊天訊息: hi
+通過重新 publish 發送聊天訊息: 用戶_520|CHAT:{"type":"chat","message":"hi","sender":"用戶_520","timestamp":1756363938855}
+嘗試發送自定義聊天訊息: {"request":"message","room":1234,"body":{"type":"chat","message":"hi","sender":"用戶_520","timestamp":1756363938856}}
+自定義聊天訊息結果: {"videoroom":"event","error_code":423,"error":"Unknown request 'message'"}
+自定義聊天訊息被拒絕 (423): Unknown request 'message'，嘗試重新發布方法
+嘗試通過 configure 更新 display: {"request":"configure","display":"用戶_520|CHAT:{\"type\":\"chat\",\"message\":\"hi\",\"sender\":\"用戶_520\",\"timestamp\":1756363938855}"}
+Configure display 結果: undefined
+Display 更新發送成功，保持聊天 display 較長時間
+現在恢復原始 display
+原始 display 恢復結果: undefined
+用戶 2720334664941661 離開房間
+index.html:732 Video track muted for 用戶_998
+index.html:744 Video remains muted for 用戶_998
+用戶_409 加入房間
+收到 用戶_409 的視訊流
+收到 用戶_409 的視訊流
+單個用戶 6300409849653241 display 更新: 用戶_409|CHAT:{"type":"chat","message":"123","sender":"用戶_409","timestamp":1756364013146}
+解析到聊天數據: {"type":"chat","message":"123","sender":"用戶_409","timestamp":1756364013146}
+收到來自 用戶_409 的訊息: 123
+單個用戶 6300409849653241 display 更新: 用戶_409|CHAT:{"type":"chat","message":"456","sender":"用戶_409","timestamp":1756364014737}
+解析到聊天數據: {"type":"chat","message":"456","sender":"用戶_409","timestamp":1756364014737}
+收到來自 用戶_409 的訊息: 456
+單個用戶 6300409849653241 display 更新: 用戶_409
+單個用戶 6300409849653241 display 更新: 用戶_409
+單個用戶 7376455352080406 display 更新: 用戶_130|CHAT:{"type":"chat","message":"yeah","sender":"用戶_130","timestamp":1756364021779}
+解析到聊天數據: {"type":"chat","message":"yeah","sender":"用戶_130","timestamp":1756364021779}
+收到來自 用戶_130 的訊息: yeah
+單個用戶 6300409849653241 display 更新: 用戶_409|CHAT:{"type":"chat","message":"我的長處就是我的長處","sender":"用戶_409","timestamp":1756364024251}
+解析到聊天數據: {"type":"chat","message":"我的長處就是我的長處","sender":"用戶_409","timestamp":1756364024251}
+收到來自 用戶_409 的訊息: 我的長處就是我的長處
+單個用戶 7376455352080406 display 更新: 用戶_130
+單個用戶 6300409849653241 display 更新: 用戶_409
+單個用戶 6300409849653241 display 更新: 用戶_409|CHAT:{"type":"chat","message":"男朋友要找長的帥的有錢的","sender":"用戶_409","timestamp":1756364052683}
+解析到聊天數據: {"type":"chat","message":"男朋友要找長的帥的有錢的","sender":"用戶_409","timestamp":1756364052683}
+收到來自 用戶_409 的訊息: 男朋友要找長的帥的有錢的
+單個用戶 6300409849653241 display 更新: 用戶_409
+單個用戶 6300409849653241 display 更新: 用戶_409|CHAT:{"type":"chat","message":"請問是幾個條件","sender":"用戶_409","timestamp":1756364059082}
+解析到聊天數據: {"type":"chat","message":"請問是幾個條件","sender":"用戶_409","timestamp":1756364059082}
+收到來自 用戶_409 的訊息: 請問是幾個條件
+單個用戶 6300409849653241 display 更新: 用戶_409
+用戶_622 加入房間
+收到 用戶_622 的視訊流
+收到 用戶_622 的視訊流
+用戶 5766075733664861 離開房間
+index.html:732 Video track muted for 用戶_622
+index.html:744 Video remains muted for 用戶_622

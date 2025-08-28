@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>簡潔版 VideoRoom 聊天室</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .controls {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .video-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .video-container {
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        video {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            background: #000;
+        }
+        .video-label {
+            padding: 10px;
+            text-align: center;
+            font-weight: bold;
+            color: #333;
+        }
+        .chat-section {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .chat-messages {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+        }
+        .chat-input-group {
+            display: flex;
+            gap: 10px;
+        }
+        .chat-input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .btn {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-primary { background: #007bff; color: white; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn:disabled { background: #ccc; cursor: not-allowed; }
+        .message-item {
+            margin-bottom: 8px;
+            padding: 8px;
+            border-radius: 5px;
+            background: #f8f9fa;
+        }
+        .message-sender {
+            font-weight: bold;
+            color: #007bff;
+            margin-right: 8px;
+        }
+        .message-own {
+            background: #e3f2fd;
+            text-align: right;
+        }
+        .message-own .message-sender {
+            color: #1976d2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>VideoRoom 聊天室 (僅 VideoRoom Display)</h1>
+        
+        <!-- 控制面板 -->
+        <div class="controls">
+            <div>
+                <input type="number" id="roomInput" placeholder="房間號碼 (預設: 1234)" value="1234">
+                <input type="text" id="usernameInput" placeholder="用戶名稱">
+                <button id="joinBtn" class="btn btn-success">加入房間</button>
+                <button id="leaveBtn" class="btn btn-danger" disabled>離開房間</button>
+            </div>
+            <div>
+                <button id="muteBtn" class="btn btn-primary" disabled>靜音</button>
+                <button id="videoBtn" class="btn btn-primary" disabled>關閉視訊</button>
+            </div>
+            <div id="roomStatus"></div>
+        </div>
+        
+        <!-- 視訊區域 -->
+        <div class="video-grid">
+            <div class="video-container">
+                <video id="localVideo" autoplay muted playsinline></video>
+                <div class="video-label">我的視訊</div>
+            </div>
+            <div id="remoteVideos"></div>
+        </div>
+        
+        <!-- 聊天區域 -->
+        <div class="chat-section">
+            <h3>聊天室</h3>
+            <div id="chatMessages" class="chat-messages"></div>
+            <div class="chat-input-group">
+                <input type="text" id="chatInput" class="chat-input" placeholder="輸入訊息..." disabled>
+                <button id="sendBtn" class="btn btn-primary" disabled>發送</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 引入 WebRTC adapter 和 Janus Gateway JavaScript 庫 -->
+    <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
+    <script src="http://192.168.6.70:8081/janus.js"></script>
+    
+    <script>
+        // 全域變數
+        let janus = null;
+        let videoRoomHandle = null;
+        let localStream = null;
+        let remoteStreams = {};
+        let isAudioMuted = false;
+        let isVideoMuted = false;
+        let currentRoomId = null;
+        let roomParticipants = new Set();
+        let currentUserId = null;
+        let currentUserName = null;
+        let displayRestoreTimeout = null;
+        
+        // 訊息去重系統
+        const processedMessages = new Map();
+        
+        // 生成 UUID v7
+        function generateUUIDv7() {
+            const timestamp = Date.now();
+            const timestampHex = timestamp.toString(16).padStart(12, '0');
+            const randomHex = Array.from({length: 20}, () => 
+                Math.floor(Math.random() * 16).toString(16)
+            ).join('');
+            
+            return `${timestampHex.slice(0,8)}-${timestampHex.slice(8,12)}-7${randomHex.slice(0,3)}-${randomHex.slice(3,7)}-${randomHex.slice(7,19)}`;
+        }
+        
+        // 清理過期訊息記錄
+        function cleanupOldMessages() {
+            const now = Date.now();
+            const expireTime = 5 * 60 * 1000;
+            
+            for (const [key, timestamp] of processedMessages.entries()) {
+                if (now - timestamp > expireTime) {
+                    processedMessages.delete(key);
+                }
+            }
+        }
+        setInterval(cleanupOldMessages, 60 * 1000);
+        
+        // DOM 元素
+        const joinBtn = document.getElementById('joinBtn');
+        const leaveBtn = document.getElementById('leaveBtn');
+        const muteBtn = document.getElementById('muteBtn');
+        const videoBtn = document.getElementById('videoBtn');
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideos = document.getElementById('remoteVideos');
+        const roomInput = document.getElementById('roomInput');
+        const usernameInput = document.getElementById('usernameInput');
+        const roomStatus = document.getElementById('roomStatus');
+        const chatMessages = document.getElementById('chatMessages');
+        const chatInput = document.getElementById('chatInput');
+        const sendBtn = document.getElementById('sendBtn');
+        
+        // 日誌函數
+        function log(message) {
+            console.log(message);
+        }
+        
+        // 初始化 Janus
+        function initJanus() {
+            if (!Janus.isWebrtcSupported()) {
+                log("WebRTC 不支援！");
+                return;
+            }
+            
+            Janus.init({
+                debug: "all",
+                callback: function() {
+                    log("Janus 庫初始化成功");
+                    janus = new Janus({
+                        server: "ws://192.168.6.70:8188",
+                        success: function() {
+                            log("已連接到 Janus Gateway");
+                            joinBtn.disabled = false;
+                        },
+                        error: function(error) {
+                            log("連接 Janus Gateway 失敗: " + error);
+                        }
+                    });
+                }
+            });
+        }
+        
+        // 加入房間
+        function joinRoom() {
+            if (!janus) {
+                log("Janus 未初始化，請稍後再試");
+                return;
+            }
+            
+            const roomId = roomInput.value || "1234";
+            const username = usernameInput.value || ("用戶_" + Math.floor(Math.random() * 1000));
+            
+            currentRoomId = parseInt(roomId);
+            currentUserName = username;
+            
+            log("正在獲取媒體流...");
+            
+            // 先獲取媒體流
+            navigator.mediaDevices.getUserMedia({ 
+                video: { width: { ideal: 1280 }, height: { ideal: 720 } }, 
+                audio: true 
+            })
+            .then(function(stream) {
+                localStream = stream;
+                localVideo.srcObject = stream;
+                
+                // 連接到 VideoRoom
+                janus.attach({
+                    plugin: "janus.plugin.videoroom",
+                    success: function(pluginHandle) {
+                        videoRoomHandle = pluginHandle;
+                        
+                        // 加入房間作為發布者
+                        videoRoomHandle.send({
+                            message: {
+                                request: "join",
+                                room: currentRoomId,
+                                ptype: "publisher",
+                                display: currentUserName
+                            }
+                        });
+                    },
+                    error: function(error) {
+                        log("VideoRoom 連接失敗: " + error);
+                    },
+                    onmessage: function(msg, jsep) {
+                        handleVideoRoomMessage(msg, jsep);
+                    }
+                });
+            })
+            .catch(function(error) {
+                log("獲取媒體流失敗: " + error);
+            });
+        }
+        
+        // 處理 VideoRoom 訊息
+        function handleVideoRoomMessage(msg, jsep) {
+            const event = msg.videoroom;
+            
+            if (event === "joined") {
+                currentUserId = msg.id;
+                log("成功加入房間 " + msg.room);
+                
+                // 啟用聊天功能
+                chatInput.disabled = false;
+                sendBtn.disabled = false;
+                
+                // 發布本地流
+                videoRoomHandle.createOffer({
+                    media: { 
+                        audioRecv: false, 
+                        videoRecv: false, 
+                        audioSend: true, 
+                        videoSend: true 
+                    },
+                    success: function(jsep) {
+                        videoRoomHandle.send({
+                            message: {
+                                request: "configure",
+                                audio: true,
+                                video: true
+                            },
+                            jsep: jsep
+                        });
+                    }
+                });
+                
+                // 訂閱現有發布者
+                if (msg.publishers) {
+                    for (let publisher of msg.publishers) {
+                        subscribeToPublisher(publisher.id, publisher.display);
+                    }
+                }
+                
+                // 更新 UI
+                joinBtn.disabled = true;
+                leaveBtn.disabled = false;
+                muteBtn.disabled = false;
+                videoBtn.disabled = false;
+                roomStatus.textContent = `已加入房間 ${msg.room}，用戶 ID: ${currentUserId}`;
+                
+            } else if (event === "event") {
+                if (msg.publishers) {
+                    for (let publisher of msg.publishers) {
+                        subscribeToPublisher(publisher.id, publisher.display);
+                    }
+                }
+                
+                if (msg.unpublished) {
+                    removeRemoteVideo(msg.unpublished);
+                }
+                
+                // 處理 display 更新（聊天訊息）
+                if (msg.display && msg.id !== currentUserId) {
+                    processChatMessage(msg.display, msg.id);
+                }
+            }
+            
+            if (jsep) {
+                videoRoomHandle.handleRemoteJsep({ jsep: jsep });
+            }
+        }
+        
+        // 訂閱發布者
+        function subscribeToPublisher(publisherId, displayName) {
+            log("收到 " + displayName + " 的視訊流");
+            
+            janus.attach({
+                plugin: "janus.plugin.videoroom",
+                success: function(subscriberHandle) {
+                    subscriberHandle.send({
+                        message: {
+                            request: "join",
+                            room: currentRoomId,
+                            ptype: "subscriber",
+                            feed: publisherId
+                        }
+                    });
+                },
+                onmessage: function(msg, jsep) {
+                    if (jsep) {
+                        subscriberHandle.createAnswer({
+                            jsep: jsep,
+                            media: { audioSend: false, videoSend: false },
+                            success: function(jsep) {
+                                subscriberHandle.send({
+                                    message: { request: "start", room: currentRoomId },
+                                    jsep: jsep
+                                });
+                            }
+                        });
+                    }
+                },
+                onremotestream: function(stream) {
+                    addRemoteVideo(publisherId, displayName, stream);
+                }
+            });
+        }
+        
+        // 添加遠端視訊
+        function addRemoteVideo(publisherId, displayName, stream) {
+            if (document.getElementById('remote-' + publisherId)) return;
+            
+            const videoContainer = document.createElement('div');
+            videoContainer.className = 'video-container';
+            videoContainer.id = 'remote-' + publisherId;
+            
+            const video = document.createElement('video');
+            video.autoplay = true;
+            video.playsinline = true;
+            video.srcObject = stream;
+            
+            const label = document.createElement('div');
+            label.className = 'video-label';
+            label.textContent = getCleanDisplayName(displayName);
+            
+            videoContainer.appendChild(video);
+            videoContainer.appendChild(label);
+            remoteVideos.appendChild(videoContainer);
+        }
+        
+        // 移除遠端視訊
+        function removeRemoteVideo(publisherId) {
+            const videoContainer = document.getElementById('remote-' + publisherId);
+            if (videoContainer) {
+                videoContainer.remove();
+            }
+        }
+        
+        // 獲取清理後的顯示名稱
+        function getCleanDisplayName(displayName) {
+            if (!displayName) return 'Unknown';
+            if (displayName.includes('|CHAT:')) {
+                return displayName.split('|CHAT:')[0];
+            }
+            return displayName;
+        }
+        
+        // 處理聊天訊息
+        function processChatMessage(displayName, publisherId) {
+            if (!displayName || !displayName.includes('|CHAT:')) return;
+            
+            try {
+                const parts = displayName.split('|CHAT:');
+                if (parts.length !== 2) return;
+                
+                const chatData = JSON.parse(parts[1]);
+                const messageId = chatData.messageId || `${chatData.sender}_${chatData.timestamp}`;
+                
+                // 檢查重複
+                if (processedMessages.has(messageId)) {
+                    return;
+                }
+                
+                processedMessages.set(messageId, Date.now());
+                
+                // 檢查是否為其他用戶的訊息
+                if (chatData.sender && chatData.sender !== currentUserName && chatData.type === 'chat') {
+                    addChatMessage(chatData.sender, chatData.sender, chatData.message, false);
+                }
+            } catch (error) {
+                log('聊天訊息解析失敗: ' + error);
+            }
+        }
+        
+        // 添加聊天訊息到界面
+        function addChatMessage(userId, username, message, isOwn) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message-item' + (isOwn ? ' message-own' : '');
+            
+            const senderSpan = document.createElement('span');
+            senderSpan.className = 'message-sender';
+            senderSpan.textContent = username + ':';
+            
+            const messageSpan = document.createElement('span');
+            messageSpan.textContent = message;
+            
+            messageDiv.appendChild(senderSpan);
+            messageDiv.appendChild(messageSpan);
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        // 發送聊天訊息
+        function sendChatMessage() {
+            const message = chatInput.value.trim();
+            if (!message || !currentRoomId || !videoRoomHandle) return;
+            
+            // 顯示自己的訊息
+            addChatMessage(currentUserId, currentUserName, message, true);
+            
+            // 通過 VideoRoom display 發送
+            const chatPayload = {
+                type: 'chat',
+                message: message,
+                sender: currentUserName,
+                timestamp: Date.now(),
+                messageId: generateUUIDv7()
+            };
+            
+            const newDisplay = `${currentUserName}|CHAT:${JSON.stringify(chatPayload)}`;
+            
+            log(`發送聊天訊息: "${message}"`);
+            
+            // 發送 display 更新
+            videoRoomHandle.send({
+                message: {
+                    request: 'configure',
+                    display: newDisplay
+                },
+                success: function(result) {
+                    log('Display 更新發送成功');
+                    
+                    // 多次重發提高可靠性
+                    for (let i = 1; i <= 3; i++) {
+                        setTimeout(() => {
+                            videoRoomHandle.send({
+                                message: {
+                                    request: 'configure',
+                                    display: newDisplay
+                                }
+                            });
+                        }, i * 800);
+                    }
+                    
+                    // 8秒後恢復原始 display
+                    if (!displayRestoreTimeout) {
+                        displayRestoreTimeout = setTimeout(() => {
+                            log('現在恢復原始 display');
+                            videoRoomHandle.send({
+                                message: {
+                                    request: 'configure',
+                                    display: currentUserName
+                                }
+                            });
+                            displayRestoreTimeout = null;
+                        }, 8000);
+                    }
+                }
+            });
+            
+            chatInput.value = '';
+        }
+        
+        // 靜音/取消靜音
+        function toggleMute() {
+            if (!localStream) return;
+            
+            const audioTrack = localStream.getAudioTracks()[0];
+            if (audioTrack) {
+                isAudioMuted = !isAudioMuted;
+                audioTrack.enabled = !isAudioMuted;
+                muteBtn.textContent = isAudioMuted ? '取消靜音' : '靜音';
+                log(isAudioMuted ? '已靜音' : '已取消靜音');
+            }
+        }
+        
+        // 關閉/開啟視訊
+        function toggleVideo() {
+            if (!localStream) return;
+            
+            const videoTrack = localStream.getVideoTracks()[0];
+            if (videoTrack) {
+                isVideoMuted = !isVideoMuted;
+                videoTrack.enabled = !isVideoMuted;
+                videoBtn.textContent = isVideoMuted ? '開啟視訊' : '關閉視訊';
+                log(isVideoMuted ? '已關閉視訊' : '已開啟視訊');
+            }
+        }
+        
+        // 離開房間
+        function leaveRoom() {
+            if (videoRoomHandle) {
+                videoRoomHandle.send({ message: { request: "leave" } });
+                videoRoomHandle.detach();
+            }
+            
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            
+            // 重置 UI
+            joinBtn.disabled = false;
+            leaveBtn.disabled = true;
+            muteBtn.disabled = true;
+            videoBtn.disabled = true;
+            chatInput.disabled = true;
+            sendBtn.disabled = true;
+            
+            localVideo.srcObject = null;
+            remoteVideos.innerHTML = '';
+            roomStatus.textContent = '';
+            
+            currentRoomId = null;
+            currentUserId = null;
+            currentUserName = null;
+            
+            log('已離開房間');
+        }
+        
+        // 事件監聽
+        joinBtn.addEventListener('click', joinRoom);
+        leaveBtn.addEventListener('click', leaveRoom);
+        muteBtn.addEventListener('click', toggleMute);
+        videoBtn.addEventListener('click', toggleVideo);
+        sendBtn.addEventListener('click', sendChatMessage);
+        
+        chatInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendChatMessage();
+            }
+        });
+        
+        // 頁面載入時初始化
+        window.addEventListener('load', function() {
+            log('正在初始化視訊聊天室...');
+            initJanus();
+        });
+    </script>
+</body>
+</html>
